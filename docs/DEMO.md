@@ -33,9 +33,11 @@ readbacks. Ollama serves inference entirely on the demo machine.
 .\.venv\Scripts\streamlit.exe run dashboard.py
 ```
 
-Show the 1.58% electricity reduction, carbon reduction, comfort chart, and
-reasoning panel. Explain that the checked-in annual comparison was generated
-before the dashboard.
+Show the 8.73% electricity reduction, 8.17% carbon reduction, 61.47% reduction
+in estimated comfort violations, and the Tier 2 reasoning panel. Explain that
+the values come from matched four-season runs, that Tier 2 completed 56/56
+12-hour supervisory checkpoints, and that the measured savings are attributed
+to Tier 1 because the long-run Tier 2 log contains no mutating setpoint action.
 
 ## 2:30–3:00 — self-healing
 

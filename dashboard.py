@@ -12,6 +12,7 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
 OUTPUTS = ROOT / "outputs"
+RESULTS = OUTPUTS / "matched-12h"
 ZONES = ("Core_ZN", "Perimeter_ZN_1", "Perimeter_ZN_2", "Perimeter_ZN_3", "Perimeter_ZN_4")
 MODE_COLORS = {
     "Energy Saver": "#57e39f",
@@ -64,7 +65,7 @@ st.markdown(
 
 @st.cache_data
 def load_summary(mode: str) -> dict[str, Any]:
-    path = OUTPUTS / mode / "summary.json"
+    path = RESULTS / mode / "summary.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
@@ -76,7 +77,7 @@ def load_proof(name: str) -> dict[str, Any]:
 
 @st.cache_data
 def load_telemetry(mode: str) -> pd.DataFrame:
-    path = OUTPUTS / mode / "telemetry.csv"
+    path = RESULTS / mode / "telemetry.csv"
     if not path.exists():
         return pd.DataFrame()
     frame = pd.read_csv(path)
@@ -114,7 +115,7 @@ def hourly_replay(mode: str) -> pd.DataFrame:
 
 @st.cache_data
 def load_policy() -> pd.DataFrame:
-    path = OUTPUTS / "agent" / "policy_log.jsonl"
+    path = RESULTS / "agent" / "policy_log.jsonl"
     if not path.exists():
         return pd.DataFrame()
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
@@ -135,7 +136,7 @@ def simulation_hour(value: str) -> int | None:
 
 @st.cache_data
 def load_reasons() -> pd.DataFrame:
-    path = OUTPUTS / "agent" / "reasoning.jsonl"
+    path = RESULTS / "agent" / "reasoning.jsonl"
     if not path.exists():
         return pd.DataFrame()
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
@@ -308,11 +309,11 @@ cost_avoided = energy_delta * cost_rate_inr
 st.markdown(
     f"""
     <div class="kpi-grid">
-      <div class="kpi" title="Exact annual electricity reduction: {energy_delta:,.4f} kWh">
+      <div class="kpi" title="Exact representative-period electricity reduction: {energy_delta:,.4f} kWh">
         <div class="kpi-label">Energy reduction</div><div class="kpi-value">{savings:.2f}%</div>
         <div class="kpi-context">{compact(energy_delta, ' kWh')} avoided</div>
       </div>
-      <div class="kpi" title="Exact annual carbon reduction: {carbon_delta:,.4f} kgCO₂e">
+      <div class="kpi" title="Exact representative-period carbon reduction: {carbon_delta:,.4f} kgCO₂e">
         <div class="kpi-label">Carbon reduction</div><div class="kpi-value">{carbon_savings:.2f}%</div>
         <div class="kpi-context">{compact(carbon_delta, ' kg')} CO₂e avoided</div>
       </div>
@@ -320,8 +321,8 @@ st.markdown(
         <div class="kpi-label">Comfort violations</div><div class="kpi-value">{compact(agent['comfort_violation_count'])}</div>
         <div class="kpi-context">{comfort_reduction:.1f}% fewer zone-timesteps</div>
       </div>
-      <div class="kpi" title="Exact modeled annual cost avoided: ₹{cost_avoided:,.2f}">
-        <div class="kpi-label">Annual cost avoided</div><div class="kpi-value">₹{compact(cost_avoided)}</div>
+      <div class="kpi" title="Exact modeled representative-period cost avoided: ₹{cost_avoided:,.2f}">
+        <div class="kpi-label">Period cost avoided</div><div class="kpi-value">₹{compact(cost_avoided)}</div>
         <div class="kpi-context">modeled at ₹{cost_rate_inr:.2f}/kWh</div>
       </div>
     </div>

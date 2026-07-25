@@ -1,0 +1,40 @@
+{
+  "mode": "agent",
+  "run_scope": "representative_periods",
+  "representative_periods": [
+    "01-15:01-21",
+    "04-15:04-21",
+    "07-15:07-21",
+    "10-15:10-21"
+  ],
+  "exit_code": 0,
+  "energyplus_version": "26.1.0-6f2e40d102",
+  "telemetry_rows": 28917,
+  "simulation_time": "day-294 23:60",
+  "day_of_year": 294,
+  "hour": 23,
+  "minute": 60,
+  "zone_temperatures_c": {
+    "Core_ZN": 27.4875,
+    "Perimeter_ZN_1": 27.6539,
+    "Perimeter_ZN_2": 27.7123,
+    "Perimeter_ZN_3": 27.3267,
+    "Perimeter_ZN_4": 27.6684
+  },
+  "pmv": {
+    "Core_ZN": 1.221,
+    "Perimeter_ZN_1": 1.279,
+    "Perimeter_ZN_2": 1.299,
+    "Perimeter_ZN_3": 1.164,
+    "Perimeter_ZN_4": 1.284
+  },
+  "energy_kwh": 8356.479448793147,
+  "carbon_intensity_kg_per_kwh": 0.8,
+  "carbon_kg": 5654.1061069091775,
+  "heating_setpoint_c": 15.56,
+  "cooling_setpoint_c": 29.44,
+  "comfort_violation_count": 2930,
+  "reflex_interventions": 4609,
+  "errors": [],
+  "pmv_method": "operative-temperature proxy: clip((T-24)*0.35, -3, 3)"
+}

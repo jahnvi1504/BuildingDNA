@@ -22,6 +22,19 @@ models/weather/*
 
 # EnergyPlus and application runtime artifacts
 outputs/*
+!outputs/matched-12h/
+outputs/matched-12h/*
+!outputs/matched-12h/comparison.json
+!outputs/matched-12h/baseline/
+outputs/matched-12h/baseline/*
+!outputs/matched-12h/baseline/summary.json
+!outputs/matched-12h/baseline/telemetry.csv
+!outputs/matched-12h/agent/
+outputs/matched-12h/agent/*
+!outputs/matched-12h/agent/summary.json
+!outputs/matched-12h/agent/telemetry.csv
+!outputs/matched-12h/agent/reasoning.jsonl
+!outputs/matched-12h/agent/policy_log.jsonl
 !outputs/callback-proof/
 outputs/callback-proof/*
 !outputs/callback-proof/callback-proof.json

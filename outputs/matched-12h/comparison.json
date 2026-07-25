@@ -1,0 +1,20 @@
+﻿{
+    "completed_at":  "2026-07-25T21:42:17.9559722Z",
+    "supervisory_interval_minutes":  720,
+    "expected_tier2_cycles":  56,
+    "actual_tier2_events":  56,
+    "tier2_event_types":  {
+                              "reason_action":  56
+                          },
+    "baseline_exit_code":  0,
+    "agent_exit_code":  0,
+    "baseline_energy_kwh":  9156.2403,
+    "agent_energy_kwh":  8356.4794,
+    "electricity_reduction_percent":  8.7346,
+    "baseline_carbon_kg":  6157.2722,
+    "agent_carbon_kg":  5654.1061,
+    "carbon_reduction_percent":  8.1719,
+    "baseline_comfort_violations":  7604,
+    "agent_comfort_violations":  2930,
+    "comfort_violation_reduction_percent":  61.4676
+}

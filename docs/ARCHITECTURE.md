@@ -9,16 +9,27 @@ execute. It is not a run–parse–edit–rerun batch pipeline.
 
 The saved comparison produced:
 
-| Metric | Fixed-schedule baseline | Eco-Loop Tier 1 | Change |
+| Metric | Fixed-schedule baseline | Eco-Loop closed loop | Change |
 |---|---:|---:|---:|
-| Facility electricity | 79,870.9 kWh | 78,605.0 kWh | **−1.58%** |
-| Carbon | 52,259.4 kgCO₂e | 51,961.0 kgCO₂e | **−0.57%** |
-| PMV-proxy violations | 89,179 | 35,475 | **−60.22%** |
+| Facility electricity | 9,156.2 kWh | 8,356.5 kWh | **−8.73%** |
+| Carbon | 6,157.3 kgCO₂e | 5,654.1 kgCO₂e | **−8.17%** |
+| PMV-proxy violations | 7,604 | 2,930 | **−61.47%** |
 | Severe EnergyPlus errors | 0 | 0 | — |
 
-These numbers are reproducible from `outputs/baseline/summary.json` and
-`outputs/agent/summary.json`. The carbon result uses the documented synthetic
+These numbers are reproducible from
+`outputs/matched-12h/baseline/summary.json`,
+`outputs/matched-12h/agent/summary.json`, and the derived
+`outputs/matched-12h/comparison.json`. Both runs use the same model, weather,
+and representative periods. The carbon result uses the documented synthetic
 hourly signal in `src/ecoloop/carbon.py`.
+
+Tier 2 was enabled at a 12-hour supervisory interval and completed all 56
+scheduled reasoning cycles synchronously. Its logged actions in this long run
+were observational (`get_pmv`) rather than mutating setpoint calls, so the
+quantified savings are attributed to the deterministic Tier 1 controller.
+`outputs/integrated-demo/integrated-proof.json` separately proves a real local
+LLM `set_setpoint` action, Tier 1 validation, and matching live EnergyPlus
+actuator readbacks.
 
 ## Representative-period evaluation
 
@@ -29,10 +40,10 @@ callbacks, but only for these four `RunPeriod` objects. The source IDF is never
 edited; Eco-Loop writes a generated `representative_periods.idf` into the run's
 output directory.
 
-Annual comparison values are derived from matched baseline and agent runs over
-these same representative periods and may be annualized with an explicitly
-reported scaling factor. This methodology samples winter, spring, monsoon, and
-autumn operating conditions while keeping local Tier 2 evaluation practical.
+The reported comparison values are totals over these same representative
+periods and are not presented as annual totals. They may be annualized only
+with an explicitly reported scaling factor. This methodology samples winter,
+spring, monsoon, and autumn operating conditions while keeping local Tier 2 evaluation practical.
 Self-hosted Llama inference takes tens of wall-clock seconds per cycle, whereas
 an accelerated continuous EnergyPlus year completes in only a few minutes.
 Running all 8,760 accelerated hourly triggers therefore would not meaningfully
@@ -52,7 +63,7 @@ Tier 1 — ReflexController (local, deterministic, zero network latency)
     │ hard temperature limits, occupied comfort band, deadband enforcement
     │ schedule actuator writes before HVAC managers
     ├──────────────────────────────► telemetry.csv / dashboard
-    │ aggregated hourly window
+    │ aggregated telemetry window
     ▼
 Tier 2 — ReasonAgent (local Llama 3.1 8B via Ollama, synchronous)
     │ local tool calls mirrored by the MCP tool surface
@@ -65,6 +76,9 @@ At each configured supervisory interval, the EnergyPlus callback completes one
 Tier 2 cycle synchronously before simulation time advances. An unavailable
 local model server, timeout, malformed tool call, or inference error becomes a
 `reason_failure` log entry and Tier 1 continues on the next timestep.
+
+The matched evaluation sets `ECOLOOP_REASON_INTERVAL_MINUTES=720`, so Tier 2
+runs every 12 simulated hours while Tier 1 continues at every system timestep.
 
 ## Macro-policy wrapper
 
@@ -193,7 +207,7 @@ live zone PMV and energy telemetry to the local LLM, executes the resulting
 writes the validated schedule value through EMS. The saved proof contains the
 LLM justification and eight matching requested/readback actuator samples from
 that same process. This closes the evidence gap between the independent local
-tool-calling smoke test and callback gate without altering the annual comparison.
+tool-calling smoke test and callback gate without altering the matched comparison.
 
 ## Model and data provenance
 
