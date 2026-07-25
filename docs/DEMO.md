@@ -17,19 +17,15 @@ EnergyPlus process.
 Open `docs/ARCHITECTURE.md`. Trace EnergyPlus → Tier 1 → asynchronous Tier 2 →
 Tier 1 clamp. Emphasize that Tier 1 has no LLM or network dependency.
 
-Start a short agent run or show the saved annual output:
+Run the isolated end-to-end proof:
 
 ```powershell
-.\.venv\Scripts\ecoloop.exe simulate --mode agent
+.\.venv\Scripts\python.exe scripts\run_integrated_demo.py
 ```
 
-For a live Groq demonstration, first set a newly rotated key in the terminal:
-
-```powershell
-$env:GROQ_API_KEY = "..."
-```
-
-Never show the key on screen.
+Point to `INTEGRATED_GROQ_ENERGYPLUS_PROOF=PASS`, the Groq `set_setpoint`
+action, Tier 1's bounded decision, and eight matching actuator readbacks. The
+key is loaded from the ignored `.env` and never printed.
 
 ## 1:20–2:30 — dashboard and evidence
 
@@ -43,7 +39,14 @@ before the dashboard.
 
 ## 2:30–3:00 — self-healing
 
-Show the severe node error in `outputs/small-office-smoke/eplusout.err`, then
-the successful repaired run. Briefly open `patch_idf` in
-`src/ecoloop/mcp_server.py` and explain validation, backup, patch, and restart.
+Run:
 
+```powershell
+.\.venv\Scripts\python.exe scripts\run_self_healing_demo.py
+```
+
+Show the initial EnergyPlus fatal termination, Groq's `patch_idf` tool call,
+the exact old/new schedule reference, and `SELF_HEALING_PROOF=PASS`. The
+repaired restart completes with 9,512 callbacks and no severe/fatal errors.
+Both the faulted and repaired disposable IDFs are committed under
+`models/runtime/`; the canonical baseline is never changed.

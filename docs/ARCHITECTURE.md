@@ -140,12 +140,26 @@ name, field, and replacement value. `IDFSelfHealer`:
 4. applies the patch; and
 5. logs the diagnosis and exact changes.
 
-The build itself exercised this path conceptually: transitioning the DOE model
-from 22.1 to 26.1 surfaced a severe water-heater node error. Correctly assigning
-the plant branch to the water heater's **use-side** nodes removed the severe
-error. A production restart supervisor should rerun from the most recent
-checkpoint after a patch; EnergyPlus cannot resume a terminated process at an
-arbitrary physics timestep.
+The deterministic proof in `scripts/run_self_healing_demo.py` copies the
+canonical IDF, injects an invalid cooling-schedule reference, and runs
+EnergyPlus to a real fatal termination. The supervisor extracts the actual
+error, asks Groq to diagnose it, executes Groq's forced `patch_idf` tool call
+against a separate repair copy, and restarts EnergyPlus. The committed proof
+records failed exit code 1 and zero callbacks before repair, followed by exit
+code 0, 9,512 callbacks, and no severe/fatal errors after repair. EnergyPlus
+cannot resume arbitrary physics state, so "healing" correctly means restoring
+the model and automatically restarting its run.
+
+## Integrated LLM-to-actuator evidence
+
+`scripts/run_integrated_demo.py` is a disposable two-day proof harness. During
+an occupied timestep it pauses inside the real EnergyPlus callback, supplies
+live zone PMV and energy telemetry to Groq, executes the resulting
+`set_setpoint` tool request through the unchanged `ReflexController`, and
+writes the validated schedule value through EMS. The saved proof contains the
+LLM justification and eight matching requested/readback actuator samples from
+that same process. This closes the evidence gap between the independent Groq
+smoke test and callback gate without altering the annual comparison.
 
 ## Model and data provenance
 

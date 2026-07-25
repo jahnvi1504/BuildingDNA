@@ -1,0 +1,112 @@
+{
+  "model": "models/runtime/integrated_groq_demo.idf",
+  "model_name": "llama-3.3-70b-versatile",
+  "reason_event": {
+    "type": "reason_action",
+    "simulation_time": "day-001 14:10",
+    "model": "llama-3.3-70b-versatile",
+    "actions": [
+      {
+        "tool": "set_setpoint",
+        "arguments": {
+          "kind": "cooling",
+          "value": 25,
+          "zone": "Perimeter_ZN_1"
+        },
+        "result": {
+          "queued": true,
+          "zone": "Perimeter_ZN_1",
+          "kind": "cooling",
+          "value_c": 25
+        }
+      }
+    ],
+    "justification": "Evidence: The recent hourly telemetry shows that Perimeter_ZN_1 has a PMV of 0.961, which is above the desired range of -0.5 to +0.5. The current cooling setpoint is 24.5C. \nAction: I have issued a conservative cooling setpoint action of 25C for Perimeter_ZN_1 to reduce the PMV and improve comfort.\nExpected effect: The new cooling setpoint of 25C should help to decrease the PMV in Perimeter_ZN_1, bringing it within the desired range and improving occupant comfort while minimizing electricity and carbon usage."
+  },
+  "actuator_samples": [
+    {
+      "simulation_time": "day-001 14:10",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:20",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:12",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:13",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:15",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:17",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:18",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    },
+    {
+      "simulation_time": "day-001 14:20",
+      "heating_requested_c": 20.0,
+      "cooling_requested_c": 25.0,
+      "heating_readback_c": 20.0,
+      "cooling_readback_c": 25.0,
+      "reflex_reason": "setpoints within safety envelope"
+    }
+  ],
+  "failure": null,
+  "exit_code": 0,
+  "mutating_tool_actions": [
+    {
+      "tool": "set_setpoint",
+      "arguments": {
+        "kind": "cooling",
+        "value": 25,
+        "zone": "Perimeter_ZN_1"
+      },
+      "result": {
+        "queued": true,
+        "zone": "Perimeter_ZN_1",
+        "kind": "cooling",
+        "value_c": 25
+      }
+    }
+  ],
+  "readbacks_match": true,
+  "passed": true
+}

@@ -10,6 +10,8 @@ Python 3.12 environment under `.venv/`.
 .\.venv\Scripts\pytest.exe
 .\.venv\Scripts\ecoloop.exe reason-smoke
 .\.venv\Scripts\ecoloop.exe policy-evaluate
+.\.venv\Scripts\python.exe scripts\run_integrated_demo.py
+.\.venv\Scripts\python.exe scripts\run_self_healing_demo.py
 ```
 
 ## Run

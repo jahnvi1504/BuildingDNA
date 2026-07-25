@@ -1,0 +1,49 @@
+{
+  "model": "llama-3.3-70b-versatile",
+  "fault_model": "models/runtime/self_healing_fault.idf",
+  "repaired_model": "models/runtime/self_healing_repaired.idf",
+  "fault": {
+    "injected_value": "MISSING_ECOLOOP_COOLING_SCHEDULE",
+    "exit_code": 1,
+    "callback_count": 0,
+    "errors": [
+      "**   ~~~   ** Cooling Setpoint Temperature Schedule Name = MISSING_ECOLOOP_COOLING_SCHEDULE, item not found."
+    ]
+  },
+  "agent": {
+    "tool": "patch_idf",
+    "arguments": {
+      "diff": {
+        "diagnosis": "EnergyPlus input failure due to missing cooling setpoint temperature schedule",
+        "operations": [
+          {
+            "field": "Cooling_Setpoint_Temperature_Schedule_Name",
+            "object_name": "Core_ZN Dual SP Control",
+            "object_type": "THERMOSTATSETPOINT:DUALSETPOINT",
+            "value": "CLGSETP_SCH_NO_OPTIMUM"
+          }
+        ]
+      }
+    },
+    "patch_result": {
+      "patched": true,
+      "backup": "models/runtime/self_healing_repaired.20260725T122726Z.bak.idf",
+      "applied": [
+        {
+          "field": "Cooling_Setpoint_Temperature_Schedule_Name",
+          "object_name": "Core_ZN Dual SP Control",
+          "object_type": "THERMOSTATSETPOINT:DUALSETPOINT",
+          "value": "CLGSETP_SCH_NO_OPTIMUM",
+          "old_value": "MISSING_ECOLOOP_COOLING_SCHEDULE"
+        }
+      ],
+      "diagnosis": "EnergyPlus input failure due to missing cooling setpoint temperature schedule"
+    }
+  },
+  "recovery": {
+    "exit_code": 0,
+    "callback_count": 9512,
+    "severe_or_fatal_errors": []
+  },
+  "passed": true
+}

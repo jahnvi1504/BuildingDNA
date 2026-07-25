@@ -69,6 +69,12 @@ def load_summary(mode: str) -> dict[str, Any]:
 
 
 @st.cache_data
+def load_proof(name: str) -> dict[str, Any]:
+    path = OUTPUTS / name
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+@st.cache_data
 def load_telemetry(mode: str) -> pd.DataFrame:
     path = OUTPUTS / mode / "telemetry.csv"
     if not path.exists():
@@ -193,6 +199,8 @@ def selected_hour(event: Any) -> int | None:
 
 baseline = load_summary("baseline")
 agent = load_summary("agent")
+integrated_proof = load_proof("integrated-demo/integrated-proof.json")
+self_healing_proof = load_proof("self-healing-demo/self-healing-proof.json")
 baseline_hourly = hourly_replay("baseline")
 agent_hourly = hourly_replay("agent")
 policy = load_policy()
@@ -208,6 +216,24 @@ with hero_left:
 with hero_right:
     st.markdown(
         '<div class="trust"><span class="dot"></span> EMS CALLBACK VERIFIED</div>',
+        unsafe_allow_html=True,
+    )
+
+proof_left, proof_right = st.columns(2)
+with proof_left:
+    integrated_status = "VERIFIED" if integrated_proof.get("passed") else "NOT RUN"
+    integrated_actions = len(integrated_proof.get("mutating_tool_actions", []))
+    st.markdown(
+        f'<div class="trust"><span class="dot"></span> LLM → ACTUATOR {integrated_status}'
+        f' · {integrated_actions} TOOL ACTION</div>',
+        unsafe_allow_html=True,
+    )
+with proof_right:
+    healing_status = "VERIFIED" if self_healing_proof.get("passed") else "NOT RUN"
+    recovered_callbacks = self_healing_proof.get("recovery", {}).get("callback_count", 0)
+    st.markdown(
+        f'<div class="trust"><span class="dot"></span> SELF-HEALING {healing_status}'
+        f' · {recovered_callbacks:,} CALLBACKS</div>',
         unsafe_allow_html=True,
     )
 

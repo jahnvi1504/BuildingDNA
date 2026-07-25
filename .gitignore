@@ -12,6 +12,7 @@ __pycache__/
 # EnergyPlus transition byproducts
 *.idfnew
 *.idfold
+*.bak.idf
 *.VCpErr
 *.vcperr
 
@@ -32,7 +33,17 @@ outputs/agent/*
 !outputs/agent/summary.json
 !outputs/agent/reasoning.jsonl
 !outputs/agent/policy_log.jsonl
+!outputs/integrated-demo/
+outputs/integrated-demo/*
+!outputs/integrated-demo/integrated-proof.json
+!outputs/integrated-demo/reasoning.jsonl
+!outputs/self-healing-demo/
+outputs/self-healing-demo/*
+!outputs/self-healing-demo/self-healing-proof.json
 runtime/
+!models/runtime/
+!models/runtime/*.idf
+models/runtime/*.bak.idf
 *.eso
 *.mtr
 *.sqlite
