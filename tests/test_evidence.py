@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_integrated_groq_action_reached_energyplus_actuator() -> None:
+def test_integrated_llm_action_reached_energyplus_actuator() -> None:
     proof = json.loads(
         (ROOT / "outputs" / "integrated-demo" / "integrated-proof.json").read_text()
     )

@@ -19,7 +19,7 @@ def parser() -> argparse.ArgumentParser:
     simulate.add_argument("--mode", choices=("baseline", "agent"), required=True)
     simulate.add_argument("--output", type=Path)
     commands.add_parser("mcp", help="Run MCP server over stdio")
-    commands.add_parser("reason-smoke", help="Make one safe Tier 2 Groq tool-calling request")
+    commands.add_parser("reason-smoke", help="Make one safe Tier 2 tool-calling request")
     policy = commands.add_parser(
         "policy-evaluate", help="Score saved runs and write the macro-policy log"
     )

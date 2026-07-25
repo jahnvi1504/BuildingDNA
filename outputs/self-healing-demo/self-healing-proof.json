@@ -1,5 +1,5 @@
 {
-  "model": "llama-3.3-70b-versatile",
+  "model": "llama3.1:8b",
   "fault_model": "models/runtime/self_healing_fault.idf",
   "repaired_model": "models/runtime/self_healing_repaired.idf",
   "fault": {
@@ -14,12 +14,12 @@
     "tool": "patch_idf",
     "arguments": {
       "diff": {
-        "diagnosis": "EnergyPlus input failure due to missing cooling setpoint temperature schedule",
+        "diagnosis": "Cooling Setpoint Temperature Schedule Name = MISSING_ECOLOOP_COOLING_SCHEDULE, item not found.",
         "operations": [
           {
-            "field": "Cooling_Setpoint_Temperature_Schedule_Name",
-            "object_name": "Core_ZN Dual SP Control",
             "object_type": "THERMOSTATSETPOINT:DUALSETPOINT",
+            "object_name": "Core_ZN Dual SP Control",
+            "field": "Cooling_Setpoint_Temperature_Schedule_Name",
             "value": "CLGSETP_SCH_NO_OPTIMUM"
           }
         ]
@@ -27,17 +27,17 @@
     },
     "patch_result": {
       "patched": true,
-      "backup": "models/runtime/self_healing_repaired.20260725T122726Z.bak.idf",
+      "backup": "models/runtime/self_healing_repaired.20260725T145023Z.bak.idf",
       "applied": [
         {
-          "field": "Cooling_Setpoint_Temperature_Schedule_Name",
-          "object_name": "Core_ZN Dual SP Control",
           "object_type": "THERMOSTATSETPOINT:DUALSETPOINT",
+          "object_name": "Core_ZN Dual SP Control",
+          "field": "Cooling_Setpoint_Temperature_Schedule_Name",
           "value": "CLGSETP_SCH_NO_OPTIMUM",
           "old_value": "MISSING_ECOLOOP_COOLING_SCHEDULE"
         }
       ],
-      "diagnosis": "EnergyPlus input failure due to missing cooling setpoint temperature schedule"
+      "diagnosis": "Cooling Setpoint Temperature Schedule Name = MISSING_ECOLOOP_COOLING_SCHEDULE, item not found."
     }
   },
   "recovery": {

@@ -106,6 +106,12 @@ TOOL_SCHEMAS = [
 MUTATING_TOOLS = {"set_setpoint", "adjust_schedule", "patch_idf"}
 MAX_TOOL_ROUNDS = 3
 MAX_ACTIONS = 2
+TOOL_PARAMETER_NAMES = {
+    schema["function"]["name"]: set(
+        schema["function"]["parameters"].get("properties", {})
+    )
+    for schema in TOOL_SCHEMAS
+}
 
 
 class ReasonAgent:
@@ -121,7 +127,7 @@ class ReasonAgent:
         self.windows.append(snapshot)
 
     def trigger(self) -> bool:
-        if not self.settings.ecoloop_reason_enabled or not self.settings.groq_api_key:
+        if not self.settings.ecoloop_reason_enabled:
             return False
         with self._lock:
             if self._running:
@@ -134,8 +140,6 @@ class ReasonAgent:
         """Run one synchronous reasoning cycle; useful for startup checks and tests."""
         if not self.settings.ecoloop_reason_enabled:
             raise RuntimeError("Tier 2 is disabled by ECOLOOP_REASON_ENABLED")
-        if not self.settings.groq_api_key:
-            raise RuntimeError("GROQ_API_KEY is missing")
         return self._reason()
 
     def _run(self) -> None:
@@ -155,9 +159,12 @@ class ReasonAgent:
                 self._running = False
 
     def _reason(self) -> dict[str, Any]:
-        from groq import Groq
+        from openai import OpenAI
 
-        client = Groq(api_key=self.settings.groq_api_key)
+        client = OpenAI(
+            base_url=self.settings.llm_base_url,
+            api_key=self.settings.llm_api_key,
+        )
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
@@ -167,7 +174,9 @@ class ReasonAgent:
                     "hard safety and clamps every request. Inspect telemetry before acting. Make no "
                     "more than two mutating tool calls total. Never patch the IDF unless the error log "
                     "contains a concrete severe model fault. Finish with a concise justification that "
-                    "states evidence, action (or no action), and expected effect."
+                    "states evidence, action (or no action), and expected effect. If recent telemetry "
+                    "contains a demonstration_constraint, satisfy it with an actual mutating tool call; "
+                    "describing an action in text without calling the tool is invalid."
                 ),
             },
             {
@@ -178,12 +187,22 @@ class ReasonAgent:
         ]
         actions: list[dict[str, Any]] = []
         justification = "No supervisory change was needed."
+        demo_action_required = any(
+            "demonstration_constraint" in snapshot for snapshot in self.windows
+        )
         for _ in range(MAX_TOOL_ROUNDS):
+            has_mutating_action = any(
+                action["tool"] in MUTATING_TOOLS for action in actions
+            )
             response = client.chat.completions.create(
-                model=self.settings.groq_model,
+                model=self.settings.llm_model,
                 messages=messages,
                 tools=TOOL_SCHEMAS,
-                tool_choice="auto",
+                tool_choice=(
+                    "required"
+                    if demo_action_required and not has_mutating_action
+                    else "auto"
+                ),
                 temperature=0.1,
                 max_completion_tokens=600,
             )
@@ -203,6 +222,11 @@ class ReasonAgent:
                 else:
                     parsed_args = json.loads(call.function.arguments or "{}")
                     args = parsed_args if isinstance(parsed_args, dict) else {}
+                    args = {
+                        key: value
+                        for key, value in args.items()
+                        if key in TOOL_PARAMETER_NAMES[name]
+                    }
                     result = getattr(self.tools, name)(**args)
                     actions.append({"tool": name, "arguments": args, "result": result})
                 messages.append(
@@ -211,7 +235,7 @@ class ReasonAgent:
         event = {
             "type": "reason_action",
             "simulation_time": self.state.snapshot()["simulation_time"],
-            "model": self.settings.groq_model,
+            "model": self.settings.llm_model,
             "actions": actions,
             "justification": justification,
         }

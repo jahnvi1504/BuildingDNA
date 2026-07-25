@@ -1,4 +1,4 @@
-"""Prove Groq tool calls change actuators inside one live EnergyPlus process."""
+"""Prove local LLM tool calls change actuators inside one live EnergyPlus process."""
 
 from __future__ import annotations
 
@@ -8,10 +8,11 @@ import sys
 from typing import Any
 
 from eppy.modeleditor import IDF
+from openai import OpenAI
 
 from ecoloop.carbon import grid_carbon_intensity
 from ecoloop.config import PROJECT_ROOT, settings
-from ecoloop.reason import ReasonAgent
+from ecoloop.reason import TOOL_SCHEMAS
 from ecoloop.reflex import ReflexController
 from ecoloop.simulation import COOLING_SCHEDULES, HEATING_SCHEDULES, pmv_proxy
 from ecoloop.state import LiveState, ZONES
@@ -20,8 +21,11 @@ from ecoloop.tools import ControlTools
 
 MODEL_DIR = PROJECT_ROOT / "models" / "runtime"
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / "integrated-demo"
-MODEL_PATH = MODEL_DIR / "integrated_groq_demo.idf"
+MODEL_PATH = MODEL_DIR / "integrated_llm_demo.idf"
 PROOF_PATH = OUTPUT_DIR / "integrated-proof.json"
+SETPOINT_TOOL = next(
+    schema for schema in TOOL_SCHEMAS if schema["function"]["name"] == "set_setpoint"
+)
 
 
 def prepare_model() -> None:
@@ -41,8 +45,6 @@ def prepare_model() -> None:
 
 
 def main() -> int:
-    if not settings.groq_api_key:
-        raise RuntimeError("GROQ_API_KEY is required for the integrated demo")
     prepare_model()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     reasoning_path = OUTPUT_DIR / "reasoning.jsonl"
@@ -57,11 +59,11 @@ def main() -> int:
     state = LiveState(reasoning_path)
     tools = ControlTools(state, MODEL_PATH, home / "Energy+.idd")
     reflex = ReflexController(settings, state)
-    reason = ReasonAgent(settings, state, tools)
+    client = OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
     handles: dict[str, int] = {}
     proof: dict[str, Any] = {
         "model": MODEL_PATH.relative_to(PROJECT_ROOT).as_posix(),
-        "model_name": settings.groq_model,
+        "model_name": settings.llm_model,
         "reason_event": None,
         "actuator_samples": [],
         "failure": None,
@@ -124,17 +126,73 @@ def main() -> int:
         if not reasoning_complete:
             if hour < 14:
                 return
-            reason.observe(
+            telemetry = {
+                **state.snapshot(),
+                "demonstration_constraint": (
+                    "Issue one conservative cooling setpoint between 24.0C and "
+                    "26.0C. Tier 1 will independently validate it."
+                ),
+            }
+            messages: list[dict[str, Any]] = [
                 {
-                    **state.snapshot(),
-                    "demonstration_constraint": (
-                        "For this end-to-end proof, issue exactly one conservative cooling "
-                        "setpoint action between 24.0C and 26.0C using the live telemetry. "
-                        "Tier 1 will independently validate it."
+                    "role": "system",
+                    "content": (
+                        "You supervise a live office. Use the required set_setpoint tool "
+                        "exactly once based on the supplied telemetry. Choose a valid zone, "
+                        "kind='cooling', and a value from 24.0C through 26.0C."
                     ),
-                }
+                },
+                {"role": "user", "content": json.dumps(telemetry)},
+            ]
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                messages=messages,
+                tools=[SETPOINT_TOOL],
+                tool_choice={"type": "function", "function": {"name": "set_setpoint"}},
+                temperature=0,
+                max_completion_tokens=250,
             )
-            proof["reason_event"] = reason.run_once()
+            message = response.choices[0].message
+            call = message.tool_calls[0]
+            parsed = json.loads(call.function.arguments or "{}")
+            arguments = {
+                key: value
+                for key, value in parsed.items()
+                if key in {"zone", "value", "kind"}
+            }
+            result = tools.set_setpoint(**arguments)
+            messages.extend(
+                [
+                    message.model_dump(exclude_none=True),
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": json.dumps(result),
+                    },
+                ]
+            )
+            final = client.chat.completions.create(
+                model=settings.llm_model,
+                messages=messages,
+                temperature=0,
+                max_completion_tokens=160,
+            )
+            event = {
+                "type": "reason_action",
+                "simulation_time": state.snapshot()["simulation_time"],
+                "model": settings.llm_model,
+                "actions": [
+                    {
+                        "tool": call.function.name,
+                        "arguments": arguments,
+                        "result": result,
+                    }
+                ],
+                "justification": final.choices[0].message.content
+                or "Local LLM action applied.",
+            }
+            state.log_reason(event)
+            proof["reason_event"] = event
             reasoning_complete = True
 
         decision = reflex.step(temps, occupied=True)
@@ -197,7 +255,7 @@ def main() -> int:
     proof["passed"] = passed
     PROOF_PATH.write_text(json.dumps(proof, indent=2), encoding="utf-8")
     print(json.dumps(proof, indent=2))
-    print(f"INTEGRATED_GROQ_ENERGYPLUS_PROOF={'PASS' if passed else 'FAIL'}")
+    print(f"INTEGRATED_LLM_ENERGYPLUS_PROOF={'PASS' if passed else 'FAIL'}")
     return 0 if passed else 1
 
 

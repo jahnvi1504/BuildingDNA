@@ -32,17 +32,16 @@ Tier 1 — ReflexController (local, deterministic, zero network latency)
     ├──────────────────────────────► telemetry.csv / dashboard
     │ aggregated hourly window
     ▼
-Tier 2 — ReasonAgent (Groq, asynchronous)
+Tier 2 — ReasonAgent (local Llama 3.1 8B via Ollama, asynchronous)
     │ local tool calls mirrored by the MCP tool surface
     │ bounded supervisory setpoint requests + natural-language justification
     ▼
 Tier 1 validation/clamping ────────► next EnergyPlus timestep
 ```
 
-Tier 1 never waits for Tier 2. A missing key, timeout, malformed tool call, or
-provider error becomes a `reason_failure` log entry while the simulation
-continues. The saved agent run intentionally demonstrates this independence:
-it completed with no `GROQ_API_KEY`.
+Tier 1 never waits for Tier 2. An unavailable local model server, timeout,
+malformed tool call, or inference error becomes a `reason_failure` log entry
+while the simulation continues.
 
 ## Macro-policy wrapper
 
@@ -94,7 +93,7 @@ is `outputs/callback-proof/callback-proof.json`.
 - `get_error_log()`
 - `patch_idf(diff)`
 
-The in-process Groq agent uses the same `ControlTools` implementation as MCP,
+The in-process local-LLM agent uses the same `ControlTools` implementation as MCP,
 so tool semantics cannot drift between the demo loop and external MCP clients.
 `set_setpoint` only queues a request. Tier 1 applies it after safety checks;
 the model never gives the LLM direct actuator authority.
@@ -107,12 +106,14 @@ and requires an evidence/action/expected-effect justification.
 
 Raw timestep logs are not sent to the model. `ReasonAgent` keeps a bounded
 12-observation deque of already-aggregated snapshots, serializes it compactly,
-and calls Groq hourly by default. This caps cost and latency independently of
-simulation length.
+and calls the local Ollama server hourly by default. This caps inference
+frequency and latency independently of simulation length.
 
-The default production model is `llama-3.3-70b-versatile`, selected because
-Groq currently lists it as a production model with local tool support. The
-model ID remains configurable through `GROQ_MODEL`.
+The default model is the open-source `llama3.1:8b`, served locally by Ollama's
+OpenAI-compatible endpoint at `http://localhost:11434/v1`. The base URL, client
+placeholder key, and model are configurable through `ECOLOOP_LLM_BASE_URL`,
+`ECOLOOP_LLM_API_KEY`, and `ECOLOOP_LLM_MODEL`. No inference request or API key
+leaves the machine.
 
 ## Comfort metric
 
@@ -143,7 +144,7 @@ name, field, and replacement value. `IDFSelfHealer`:
 The deterministic proof in `scripts/run_self_healing_demo.py` copies the
 canonical IDF, injects an invalid cooling-schedule reference, and runs
 EnergyPlus to a real fatal termination. The supervisor extracts the actual
-error, asks Groq to diagnose it, executes Groq's forced `patch_idf` tool call
+error, asks the local LLM to diagnose it, executes its forced `patch_idf` tool call
 against a separate repair copy, and restarts EnergyPlus. The committed proof
 records failed exit code 1 and zero callbacks before repair, followed by exit
 code 0, 9,512 callbacks, and no severe/fatal errors after repair. EnergyPlus
@@ -154,12 +155,12 @@ the model and automatically restarting its run.
 
 `scripts/run_integrated_demo.py` is a disposable two-day proof harness. During
 an occupied timestep it pauses inside the real EnergyPlus callback, supplies
-live zone PMV and energy telemetry to Groq, executes the resulting
+live zone PMV and energy telemetry to the local LLM, executes the resulting
 `set_setpoint` tool request through the unchanged `ReflexController`, and
 writes the validated schedule value through EMS. The saved proof contains the
 LLM justification and eight matching requested/readback actuator samples from
-that same process. This closes the evidence gap between the independent Groq
-smoke test and callback gate without altering the annual comparison.
+that same process. This closes the evidence gap between the independent local
+tool-calling smoke test and callback gate without altering the annual comparison.
 
 ## Model and data provenance
 
@@ -175,7 +176,17 @@ smoke test and callback gate without altering the annual comparison.
 
 ## Latency and failure behavior
 
-The callback performs no network I/O. Tier 2 runs on a daemon thread and drops
-overlapping triggers instead of accumulating stale decisions. Every external
-request is revalidated on the next callback. If Tier 2 is unavailable, Tier 1
-continues for the full simulation using its local occupied/unoccupied policy.
+The production callback performs no inference I/O. Tier 2 runs on a daemon
+thread and drops overlapping triggers instead of accumulating stale decisions.
+Every local-model request is revalidated on the next callback. If Ollama is
+unavailable, Tier 1 continues for the full simulation using its local
+occupied/unoccupied policy.
+
+Measured on the hackathon workstation, the warmed local `llama3.1:8b` smoke
+cycle completed in 36.45 seconds. The integrated two-call action/justification
+proof took 91.90 seconds total, and the self-healing proof took 43.25 seconds
+including two EnergyPlus launches. This is materially slower than the former
+hosted backend. It remains below a real one-hour supervisory interval, but an
+accelerated annual simulation advances much faster than wall time, so the
+single-flight agent will intentionally skip overlapping hourly triggers. Tier
+1 timing and safety are unchanged.

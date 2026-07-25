@@ -1,8 +1,8 @@
 # Eco-Loop Building Agents
 
 Live, closed-loop building energy optimization using EnergyPlus Python API
-callbacks, a deterministic safety controller, and a Groq-hosted supervisory
-agent.
+callbacks, a deterministic safety controller, and a locally hosted open-source
+LLM (Llama 3.1 8B through Ollama).
 
 ## Verified status
 
@@ -14,15 +14,16 @@ also complete with zero severe errors.
 Two isolated proofs cover the remaining autonomous paths without modifying the
 annual baseline model:
 
-- `outputs/integrated-demo/integrated-proof.json` records a real Groq
+- `outputs/integrated-demo/integrated-proof.json` records a real local-LLM
   `set_setpoint` tool call, Tier 1 validation, and eight matching EnergyPlus
   actuator readbacks from the same running process.
 - `outputs/self-healing-demo/self-healing-proof.json` records an injected IDF
-  failure, Groq diagnosis and `patch_idf` call, automatic restart, 9,512
+  failure, local-LLM diagnosis and `patch_idf` call, automatic restart, 9,512
   recovered callbacks, and zero severe/fatal errors after repair.
 
-Secrets are read only from `GROQ_API_KEY`. Copy `.env.example` to `.env` and
-provide a newly rotated key locally; never commit it.
+Tier 2 calls only `http://localhost:11434/v1`; no external inference API is
+used and no API key leaves the machine. The OpenAI-compatible client receives
+the non-secret placeholder key `ollama`, as required by its constructor.
 
 ## Results
 

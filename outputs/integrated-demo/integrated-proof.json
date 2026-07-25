@@ -1,27 +1,27 @@
 {
-  "model": "models/runtime/integrated_groq_demo.idf",
-  "model_name": "llama-3.3-70b-versatile",
+  "model": "models/runtime/integrated_llm_demo.idf",
+  "model_name": "llama3.1:8b",
   "reason_event": {
     "type": "reason_action",
     "simulation_time": "day-001 14:10",
-    "model": "llama-3.3-70b-versatile",
+    "model": "llama3.1:8b",
     "actions": [
       {
         "tool": "set_setpoint",
         "arguments": {
-          "kind": "cooling",
+          "zone": "Core_ZN",
           "value": 25,
-          "zone": "Perimeter_ZN_1"
+          "kind": "cooling"
         },
         "result": {
           "queued": true,
-          "zone": "Perimeter_ZN_1",
+          "zone": "Core_ZN",
           "kind": "cooling",
           "value_c": 25
         }
       }
     ],
-    "justification": "Evidence: The recent hourly telemetry shows that Perimeter_ZN_1 has a PMV of 0.961, which is above the desired range of -0.5 to +0.5. The current cooling setpoint is 24.5C. \nAction: I have issued a conservative cooling setpoint action of 25C for Perimeter_ZN_1 to reduce the PMV and improve comfort.\nExpected effect: The new cooling setpoint of 25C should help to decrease the PMV in Perimeter_ZN_1, bringing it within the desired range and improving occupant comfort while minimizing electricity and carbon usage."
+    "justification": "The set_setpoint command has been successfully queued for the Core_ZN zone with a cooling value of 25.0C."
   },
   "actuator_samples": [
     {
@@ -95,13 +95,13 @@
     {
       "tool": "set_setpoint",
       "arguments": {
-        "kind": "cooling",
+        "zone": "Core_ZN",
         "value": 25,
-        "zone": "Perimeter_ZN_1"
+        "kind": "cooling"
       },
       "result": {
         "queued": true,
-        "zone": "Perimeter_ZN_1",
+        "zone": "Core_ZN",
         "kind": "cooling",
         "value_c": 25
       }

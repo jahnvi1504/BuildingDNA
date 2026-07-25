@@ -23,9 +23,9 @@ Run the isolated end-to-end proof:
 .\.venv\Scripts\python.exe scripts\run_integrated_demo.py
 ```
 
-Point to `INTEGRATED_GROQ_ENERGYPLUS_PROOF=PASS`, the Groq `set_setpoint`
-action, Tier 1's bounded decision, and eight matching actuator readbacks. The
-key is loaded from the ignored `.env` and never printed.
+Point to `INTEGRATED_LLM_ENERGYPLUS_PROOF=PASS`, the local Llama 3.1 8B
+`set_setpoint` action, Tier 1's bounded decision, and eight matching actuator
+readbacks. Ollama serves inference entirely on the demo machine.
 
 ## 1:20–2:30 — dashboard and evidence
 
@@ -45,7 +45,7 @@ Run:
 .\.venv\Scripts\python.exe scripts\run_self_healing_demo.py
 ```
 
-Show the initial EnergyPlus fatal termination, Groq's `patch_idf` tool call,
+Show the initial EnergyPlus fatal termination, the local LLM's `patch_idf` tool call,
 the exact old/new schedule reference, and `SELF_HEALING_PROOF=PASS`. The
 repaired restart completes with 9,512 callbacks and no severe/fatal errors.
 Both the faulted and repaired disposable IDFs are committed under

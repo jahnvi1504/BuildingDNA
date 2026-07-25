@@ -3,6 +3,14 @@
 The prepared workspace uses EnergyPlus 26.1.0 unpacked under `.local/` and a
 Python 3.12 environment under `.venv/`.
 
+Tier 2 uses Ollama's local OpenAI-compatible API. Start Ollama and install the
+tool-capable model before verification:
+
+```powershell
+ollama pull llama3.1:8b
+ollama serve
+```
+
 ## Verify
 
 ```powershell
@@ -26,18 +34,19 @@ The dashboard labels its animated timeline as **Simulated Year Replay**. It
 uses completed telemetry, reasoning events, and the generated 48-hour
 macro-policy log; it does not present saved data as a live stream.
 
-To enable Tier 2, rotate any previously exposed Groq key and store the replacement
-in the ignored `.env` file:
+Tier 2 defaults to the local Ollama server. Override these values only when
+using another self-hosted OpenAI-compatible endpoint:
 
 ```dotenv
-GROQ_API_KEY=replacement-key
-GROQ_MODEL=llama-3.3-70b-versatile
+ECOLOOP_LLM_BASE_URL=http://localhost:11434/v1
+ECOLOOP_LLM_API_KEY=ollama
+ECOLOOP_LLM_MODEL=llama3.1:8b
 ECOLOOP_REASON_ENABLED=true
 ```
 
-Run `ecoloop reason-smoke` before a long simulation. It makes one real Groq
-request, exercises telemetry and bounded control tools, and redacts the key from
-its output. Tier 1 continues independently when Tier 2 is disabled or unavailable.
+Run `ecoloop reason-smoke` before a long simulation. It makes one real local
+tool-calling request and exercises telemetry plus bounded control tools. Tier 1
+continues independently when Tier 2 is disabled or Ollama is unavailable.
 
 ## MCP
 

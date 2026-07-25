@@ -1,9 +1,8 @@
 eppy==0.5.63
-groq==0.31.1
+openai==1.99.9
 mcp==1.13.1
 pandas==2.3.1
 plotly==6.2.0
 pydantic==2.11.7
 pydantic-settings==2.10.1
 streamlit==1.47.0
-

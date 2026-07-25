@@ -9,7 +9,7 @@ description = "Live Reflex + Reason control for EnergyPlus"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "eppy==0.5.63",
-  "groq==0.31.1",
+  "openai==1.99.9",
   "mcp==1.13.1",
   "pandas==2.3.1",
   "plotly==6.2.0",
@@ -31,4 +31,3 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-

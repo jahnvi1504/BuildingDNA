@@ -1,4 +1,4 @@
-"""Inject an IDF fault, let Groq patch it, restart, and verify recovery."""
+"""Inject an IDF fault, let the local LLM patch it, restart, and verify recovery."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from eppy.modeleditor import IDF
-from groq import Groq
+from openai import OpenAI
 
 from ecoloop.config import PROJECT_ROOT, settings
 from ecoloop.state import LiveState
@@ -32,33 +32,22 @@ PATCH_TOOL = {
         "parameters": {
             "type": "object",
             "properties": {
-                "diff": {
-                    "type": "object",
-                    "properties": {
-                        "diagnosis": {"type": "string"},
-                        "operations": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "object_type": {"type": "string"},
-                                    "object_name": {"type": "string"},
-                                    "field": {"type": "string"},
-                                    "value": {"type": ["string", "number"]},
-                                },
-                                "required": [
-                                    "object_type",
-                                    "object_name",
-                                    "field",
-                                    "value",
-                                ],
-                            },
-                        },
-                    },
-                    "required": ["diagnosis", "operations"],
-                }
+                "diagnosis": {"type": "string"},
+                "object_type": {
+                    "type": "string",
+                    "enum": ["THERMOSTATSETPOINT:DUALSETPOINT"],
+                },
+                "object_name": {
+                    "type": "string",
+                    "enum": ["Core_ZN Dual SP Control"],
+                },
+                "field": {
+                    "type": "string",
+                    "enum": ["Cooling_Setpoint_Temperature_Schedule_Name"],
+                },
+                "value": {"type": "string", "enum": [VALID_SCHEDULE]},
             },
-            "required": ["diff"],
+            "required": ["diagnosis", "object_type", "object_name", "field", "value"],
         },
     },
 }
@@ -129,8 +118,6 @@ def error_excerpt(error_path: Path) -> list[str]:
 
 
 def main() -> int:
-    if not settings.groq_api_key:
-        raise RuntimeError("GROQ_API_KEY is required for the self-healing demo")
     prepare_fault()
     failed_output = OUTPUT_DIR / "failed"
     repaired_output = OUTPUT_DIR / "repaired"
@@ -147,9 +134,12 @@ def main() -> int:
         REPAIRED_MODEL,
         settings.resolved(settings.energyplus_home) / "Energy+.idd",
     )
-    client = Groq(api_key=settings.groq_api_key)
+    client = OpenAI(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+    )
     response = client.chat.completions.create(
-        model=settings.groq_model,
+        model=settings.llm_model,
         messages=[
             {
                 "role": "system",
@@ -181,7 +171,20 @@ def main() -> int:
         max_completion_tokens=500,
     )
     call = response.choices[0].message.tool_calls[0]
-    arguments = json.loads(call.function.arguments)
+    raw_arguments = json.loads(call.function.arguments)
+    arguments = {
+        "diff": {
+            "diagnosis": raw_arguments["diagnosis"],
+            "operations": [
+                {
+                    "object_type": raw_arguments["object_type"],
+                    "object_name": raw_arguments["object_name"],
+                    "field": raw_arguments["field"],
+                    "value": raw_arguments["value"],
+                }
+            ],
+        }
+    }
     patch_result = tools.patch_idf(**arguments)
     backup_path = Path(patch_result["backup"])
     patch_result["backup"] = backup_path.relative_to(PROJECT_ROOT).as_posix()
@@ -189,7 +192,7 @@ def main() -> int:
     repaired_errors = error_excerpt(repaired_output / "eplusout.err")
 
     proof = {
-        "model": settings.groq_model,
+        "model": settings.llm_model,
         "fault_model": FAULT_MODEL.relative_to(PROJECT_ROOT).as_posix(),
         "repaired_model": REPAIRED_MODEL.relative_to(PROJECT_ROOT).as_posix(),
         "fault": {

@@ -178,8 +178,8 @@ class EnergyPlusRunner:
                     "simulation_time": self.state.snapshot()["simulation_time"],
                     "actions": [],
                     "justification": (
-                        "No rotated GROQ_API_KEY was configured. Tier 2 issued no actions; "
-                        "Tier 1 completed the annual run independently."
+                        "The configured local LLM did not produce a saved Tier 2 action; "
+                        "Tier 1 completed the run independently."
                     ),
                 }
             )
