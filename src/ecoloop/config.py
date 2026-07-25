@@ -39,8 +39,17 @@ class Settings(BaseSettings):
     )
     ecoloop_reason_enabled: bool = True
     ecoloop_reason_interval_minutes: int = 60
+    ecoloop_full_year: bool = False
+    ecoloop_representative_periods: list[str] = Field(
+        default_factory=lambda: [
+            "01-15:01-21",
+            "04-15:04-21",
+            "07-15:07-21",
+            "10-15:10-21",
+        ]
+    )
     occupied_heating_min_c: float = 20.0
-    occupied_cooling_max_c: float = 26.0
+    occupied_cooling_max_c: float = 27.5
     absolute_min_c: float = 18.0
     absolute_max_c: float = 28.0
     default_heating_setpoint_c: float = 21.0

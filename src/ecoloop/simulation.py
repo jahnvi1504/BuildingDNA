@@ -8,6 +8,7 @@ from typing import Any
 
 from ecoloop.carbon import grid_carbon_intensity
 from ecoloop.config import Settings
+from ecoloop.periods import build_representative_idf
 from ecoloop.policy import PolicyReasonWrapper
 from ecoloop.reason import ReasonAgent
 from ecoloop.reflex import ReflexController
@@ -38,8 +39,9 @@ class EnergyPlusRunner:
             idd_path=settings.resolved(settings.energyplus_home) / "Energy+.idd",
         )
         self.reflex = ReflexController(settings, self.state)
-        self.reason = PolicyReasonWrapper(
-            ReasonAgent(settings, self.state, self.tools),
+        self.reason = ReasonAgent(settings, self.state, self.tools)
+        self.policy_reason = PolicyReasonWrapper(
+            self.reason,
             baseline_path=output_dir.parent / "baseline" / "telemetry.csv",
             log_path=output_dir / "policy_log.jsonl",
         )
@@ -108,7 +110,13 @@ class EnergyPlusRunner:
             intensity = grid_carbon_intensity(hour)
 
             if self.mode == "agent":
-                decision = self.reflex.step(temps, occupied)
+                decision = self.reflex.step(
+                    temps,
+                    occupied,
+                    max_drift_c=(
+                        self.policy_reason.policy.profile.max_setpoint_drift_c
+                    ),
+                )
                 for schedule in COOLING_SCHEDULES:
                     api.exchange.set_actuator_value(
                         state, self.handles[f"schedule:{schedule}"], decision.cooling_c
@@ -148,14 +156,37 @@ class EnergyPlusRunner:
             self.rows.append(row)
 
             absolute_minute = (day - 1) * 1440 + hour * 60 + minute
-            if self.mode == "agent" and absolute_minute != self.last_reason_minute:
+            is_weather_run = (
+                api.exchange.kind_of_sim(state) == 3
+                and not api.exchange.warmup_flag(state)
+            )
+            if (
+                self.mode == "agent"
+                and is_weather_run
+                and absolute_minute != self.last_reason_minute
+            ):
                 if absolute_minute % self.settings.ecoloop_reason_interval_minutes == 0:
-                    self.reason.observe(snapshot)
-                    self.reason.trigger()
+                    self.policy_reason.observe(snapshot)
+                    try:
+                        self.reason.run_once()
+                    except Exception as exc:
+                        self.state.add_error(f"Reason layer error: {exc}")
+                        self.state.log_reason(
+                            {
+                                "type": "reason_failure",
+                                "simulation_time": simulation_time,
+                                "actions": [],
+                                "justification": (
+                                    "Tier 2 unavailable; Tier 1 continued safely: "
+                                    f"{exc}"
+                                ),
+                            }
+                        )
                     self.last_reason_minute = absolute_minute
 
         api.runtime.callback_after_predictor_before_hvac_managers(ep_state, callback)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        simulation_idf = self._simulation_idf()
         exit_code = api.runtime.run_energyplus(
             ep_state,
             [
@@ -163,12 +194,23 @@ class EnergyPlusRunner:
                 str(self.output_dir),
                 "-w",
                 str(self.settings.resolved(self.settings.ecoloop_epw)),
-                str(self.settings.resolved(self.settings.ecoloop_idf)),
+                str(simulation_idf),
             ],
         )
         self._write_outputs(exit_code)
         api.state_manager.delete_state(ep_state)
         return exit_code
+
+    def _simulation_idf(self) -> Path:
+        source = self.settings.resolved(self.settings.ecoloop_idf)
+        if self.settings.ecoloop_full_year:
+            return source
+        return build_representative_idf(
+            source_path=source,
+            destination_path=self.output_dir / "representative_periods.idf",
+            idd_path=self.settings.resolved(self.settings.energyplus_home) / "Energy+.idd",
+            configured_periods=self.settings.ecoloop_representative_periods,
+        )
 
     def _write_outputs(self, exit_code: int) -> None:
         if self.mode == "agent" and not (self.output_dir / "reasoning.jsonl").exists():
@@ -191,6 +233,16 @@ class EnergyPlusRunner:
                 writer.writerows(self.rows)
         summary = {
             "mode": self.mode,
+            "run_scope": (
+                "full_year"
+                if self.settings.ecoloop_full_year
+                else "representative_periods"
+            ),
+            "representative_periods": (
+                []
+                if self.settings.ecoloop_full_year
+                else self.settings.ecoloop_representative_periods
+            ),
             "exit_code": exit_code,
             "energyplus_version": "26.1.0-6f2e40d102",
             "telemetry_rows": len(self.rows),

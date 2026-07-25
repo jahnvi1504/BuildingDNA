@@ -25,7 +25,12 @@ class ReflexController:
         self.supervisory_heating_c: float | None = None
         self.supervisory_cooling_c: float | None = None
 
-    def step(self, temperatures: dict[str, float], occupied: bool) -> ReflexDecision:
+    def step(
+        self,
+        temperatures: dict[str, float],
+        occupied: bool,
+        max_drift_c: float | None = None,
+    ) -> ReflexDecision:
         intervened = False
         reasons: list[str] = []
         base_heating = self.settings.occupied_heating_min_c if occupied else 15.56
@@ -34,13 +39,31 @@ class ReflexController:
         for request in self.state.drain_setpoints():
             value = float(request.value_c)
             if request.kind == "cooling":
-                safe = min(max(value, base_heating + 1.0), self.settings.absolute_max_c)
+                safe = value
+                if max_drift_c is not None:
+                    safe = min(
+                        max(safe, base_cooling - max_drift_c),
+                        base_cooling + max_drift_c,
+                    )
+                safe = min(
+                    max(safe, base_heating + 1.0),
+                    self.settings.absolute_max_c,
+                )
                 if occupied:
                     safe = min(safe, self.settings.occupied_cooling_max_c)
                 intervened |= safe != value
                 self.supervisory_cooling_c = safe
             else:
-                safe = max(min(value, base_cooling - 1.0), self.settings.absolute_min_c)
+                safe = value
+                if max_drift_c is not None:
+                    safe = min(
+                        max(safe, base_heating - max_drift_c),
+                        base_heating + max_drift_c,
+                    )
+                safe = max(
+                    min(safe, base_cooling - 1.0),
+                    self.settings.absolute_min_c,
+                )
                 if occupied:
                     safe = max(safe, self.settings.occupied_heating_min_c)
                 intervened |= safe != value

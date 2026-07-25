@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import threading
 from collections import deque
 from typing import Any
 
@@ -120,43 +119,15 @@ class ReasonAgent:
         self.state = state
         self.tools = tools
         self.windows: deque[dict[str, Any]] = deque(maxlen=12)
-        self._running = False
-        self._lock = threading.Lock()
 
     def observe(self, snapshot: dict[str, Any]) -> None:
         self.windows.append(snapshot)
-
-    def trigger(self) -> bool:
-        if not self.settings.ecoloop_reason_enabled:
-            return False
-        with self._lock:
-            if self._running:
-                return False
-            self._running = True
-        threading.Thread(target=self._run, daemon=True, name="ecoloop-reason").start()
-        return True
 
     def run_once(self) -> dict[str, Any]:
         """Run one synchronous reasoning cycle; useful for startup checks and tests."""
         if not self.settings.ecoloop_reason_enabled:
             raise RuntimeError("Tier 2 is disabled by ECOLOOP_REASON_ENABLED")
         return self._reason()
-
-    def _run(self) -> None:
-        try:
-            self._reason()
-        except Exception as exc:
-            self.state.add_error(f"Reason layer error: {exc}")
-            self.state.log_reason(
-                {
-                    "type": "reason_failure",
-                    "simulation_time": self.state.snapshot()["simulation_time"],
-                    "justification": f"Tier 2 unavailable; Tier 1 continued safely: {exc}",
-                }
-            )
-        finally:
-            with self._lock:
-                self._running = False
 
     def _reason(self) -> dict[str, Any]:
         from openai import OpenAI

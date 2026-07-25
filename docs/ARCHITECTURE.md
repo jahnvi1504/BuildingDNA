@@ -7,7 +7,7 @@ The verified Python API callback reads five live zone temperatures and facility
 electric demand, then writes thermostat schedule actuators before HVAC managers
 execute. It is not a run–parse–edit–rerun batch pipeline.
 
-The saved annual comparison produced:
+The saved comparison produced:
 
 | Metric | Fixed-schedule baseline | Eco-Loop Tier 1 | Change |
 |---|---:|---:|---:|
@@ -19,6 +19,28 @@ The saved annual comparison produced:
 These numbers are reproducible from `outputs/baseline/summary.json` and
 `outputs/agent/summary.json`. The carbon result uses the documented synthetic
 hourly signal in `src/ecoloop/carbon.py`.
+
+## Representative-period evaluation
+
+The default evaluation runs four inclusive seasonal weeks: **January 15–21,
+April 15–21, July 15–21, and October 15–21**. Together they cover 28 days, or
+672 simulated hours. EnergyPlus still executes normal physics and live EMS
+callbacks, but only for these four `RunPeriod` objects. The source IDF is never
+edited; Eco-Loop writes a generated `representative_periods.idf` into the run's
+output directory.
+
+Annual comparison values are derived from matched baseline and agent runs over
+these same representative periods and may be annualized with an explicitly
+reported scaling factor. This methodology samples winter, spring, monsoon, and
+autumn operating conditions while keeping local Tier 2 evaluation practical.
+Self-hosted Llama inference takes tens of wall-clock seconds per cycle, whereas
+an accelerated continuous EnergyPlus year completes in only a few minutes.
+Running all 8,760 accelerated hourly triggers therefore would not meaningfully
+test hourly local inference throughput.
+
+The periods are configurable with `ECOLOOP_REPRESENTATIVE_PERIODS` (a JSON
+list of `MM-DD:MM-DD` values). `ECOLOOP_FULL_YEAR=true` restores a continuous
+full-calendar-year EnergyPlus run.
 
 ## Reflex + Reason
 
@@ -32,16 +54,17 @@ Tier 1 — ReflexController (local, deterministic, zero network latency)
     ├──────────────────────────────► telemetry.csv / dashboard
     │ aggregated hourly window
     ▼
-Tier 2 — ReasonAgent (local Llama 3.1 8B via Ollama, asynchronous)
+Tier 2 — ReasonAgent (local Llama 3.1 8B via Ollama, synchronous)
     │ local tool calls mirrored by the MCP tool surface
     │ bounded supervisory setpoint requests + natural-language justification
     ▼
 Tier 1 validation/clamping ────────► next EnergyPlus timestep
 ```
 
-Tier 1 never waits for Tier 2. An unavailable local model server, timeout,
-malformed tool call, or inference error becomes a `reason_failure` log entry
-while the simulation continues.
+At each configured supervisory interval, the EnergyPlus callback completes one
+Tier 2 cycle synchronously before simulation time advances. An unavailable
+local model server, timeout, malformed tool call, or inference error becomes a
+`reason_failure` log entry and Tier 1 continues on the next timestep.
 
 ## Macro-policy wrapper
 
@@ -56,8 +79,14 @@ cumulative metrics but has no actuator or reflex-controller reference. Every
 Three consecutive episode scores establish a trend. A declining trend moves
 from `Energy Saver` toward `Balanced` and then `Comfort Priority`; an improving
 trend permits the reverse. The selected profile is added to Tier 2's telemetry
-context as a PMV target and maximum setpoint drift. Tier 1 remains the final
-safety authority and the policy wrapper never writes an actuator.
+context as a PMV target and maximum setpoint drift. The same profile's numeric
+drift limit is passed to `ReflexController` on every agent timestep and clamps
+supervisory heating/cooling requests around that occupancy state's base
+setpoint. With the unchanged occupied cooling base of 25.4°C, Comfort Priority
+permits at most 25.9°C (+0.5°C), Balanced 26.4°C (+1.0°C), and Energy Saver
+26.9°C (+1.5°C). The separate occupied ceiling is 27.5°C and the absolute
+ceiling remains 28°C. Tier 1 remains the final safety authority and the policy
+wrapper never writes an actuator.
 
 Every completed episode is appended to `outputs/agent/policy_log.jsonl`.
 `ecoloop policy-evaluate` applies the identical state machine to saved baseline
@@ -126,8 +155,12 @@ PMV = clip((zone_temperature_c - 24.0) × 0.35, -3, 3)
 This is transparent and deterministic, but it is not a complete ISO 7730
 Fanger calculation because the DOE prototype does not define clothing,
 air-speed, and work-efficiency schedules. The dashboard labels it as an
-estimate. Enabling EnergyPlus's native Fanger outputs is a clear next
-calibration step for field-grade claims.
+estimate. Occupied PMV values outside -0.5 to +0.5 are counted as comfort
+violations. The enforced macro-policy drift clamp bounds every supervisory
+request before the occupied 27.5°C and absolute 28°C safety ceilings are
+applied; widening the occupied ceiling does not bypass the active mode's
+tighter drift limit. Enabling EnergyPlus's native Fanger outputs is a clear
+next calibration step for field-grade claims.
 
 ## Self-healing
 
@@ -176,17 +209,19 @@ tool-calling smoke test and callback gate without altering the annual comparison
 
 ## Latency and failure behavior
 
-The production callback performs no inference I/O. Tier 2 runs on a daemon
-thread and drops overlapping triggers instead of accumulating stale decisions.
-Every local-model request is revalidated on the next callback. If Ollama is
-unavailable, Tier 1 continues for the full simulation using its local
-occupied/unoccupied policy.
+The production callback performs Tier 2 inference synchronously at each
+configured trigger. This prevents an accelerated EnergyPlus run from racing
+past a slower local model or silently dropping overlapping cycles. Each
+successful cycle records `reason_action`; exceptions record `reason_failure`
+and are contained so Tier 1 continues for the full configured evaluation
+window using its local occupied/unoccupied policy.
 
 Measured on the hackathon workstation, the warmed local `llama3.1:8b` smoke
 cycle completed in 36.45 seconds. The integrated two-call action/justification
 proof took 91.90 seconds total, and the self-healing proof took 43.25 seconds
 including two EnergyPlus launches. This is materially slower than the former
 hosted backend. It remains below a real one-hour supervisory interval, but an
-accelerated annual simulation advances much faster than wall time, so the
-single-flight agent will intentionally skip overlapping hourly triggers. Tier
-1 timing and safety are unchanged.
+the accelerated simulation now pauses at each Tier 2 trigger. This makes the
+completion rate auditable, but total wall-clock time scales directly with local
+inference latency. The four-week seasonal evaluation limits that cost without
+changing Tier 1 safety behavior.

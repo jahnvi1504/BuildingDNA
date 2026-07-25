@@ -14,7 +14,7 @@ EnergyPlus process.
 
 ## 0:30–1:20 — show the architecture
 
-Open `docs/ARCHITECTURE.md`. Trace EnergyPlus → Tier 1 → asynchronous Tier 2 →
+Open `docs/ARCHITECTURE.md`. Trace EnergyPlus → Tier 1 → synchronous Tier 2 →
 Tier 1 clamp. Emphasize that Tier 1 has no LLM or network dependency.
 
 Run the isolated end-to-end proof:
