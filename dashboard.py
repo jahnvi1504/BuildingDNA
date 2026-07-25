@@ -142,6 +142,11 @@ def load_reasons() -> pd.DataFrame:
     frame = pd.DataFrame(rows)
     if frame.empty:
         return frame
+    if "type" in frame:
+        frame = frame[frame["type"] != "reason_disabled"].copy()
+    if frame.empty:
+        frame["simulated_hour"] = pd.Series(dtype="float64")
+        return frame
     frame["simulated_hour"] = frame.get("simulation_time", "").map(simulation_hour)
     return frame
 
@@ -457,17 +462,16 @@ def replay_panel() -> None:
         st.session_state.pending_hour = clicked
         st.rerun(scope="app")
 
-    reason_text = (
-        active_reason.get("justification", active_reason.get("diagnosis", "Action recorded."))
-        if active_reason is not None
-        else "No Tier 2 reasoning event was logged at or before this simulated hour."
-    )
-    st.markdown(
-        f'<div class="reason"><small>Active reasoning at hour {hour:,}'
-        f'<span class="reason-mode">{html.escape(policy_row["mode"])}</span></small><br>'
-        f'{html.escape(str(reason_text))}</div>',
-        unsafe_allow_html=True,
-    )
+    if active_reason is not None:
+        reason_text = active_reason.get(
+            "justification", active_reason.get("diagnosis", "Action recorded.")
+        )
+        st.markdown(
+            f'<div class="reason"><small>Active reasoning at hour {hour:,}'
+            f'<span class="reason-mode">{html.escape(policy_row["mode"])}</span></small><br>'
+            f'{html.escape(str(reason_text))}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 replay_panel()
