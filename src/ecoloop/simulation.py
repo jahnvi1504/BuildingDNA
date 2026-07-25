@@ -8,6 +8,7 @@ from typing import Any
 
 from ecoloop.carbon import grid_carbon_intensity
 from ecoloop.config import Settings
+from ecoloop.policy import PolicyReasonWrapper
 from ecoloop.reason import ReasonAgent
 from ecoloop.reflex import ReflexController
 from ecoloop.state import LiveState, ZONES
@@ -37,7 +38,11 @@ class EnergyPlusRunner:
             idd_path=settings.resolved(settings.energyplus_home) / "Energy+.idd",
         )
         self.reflex = ReflexController(settings, self.state)
-        self.reason = ReasonAgent(settings, self.state, self.tools)
+        self.reason = PolicyReasonWrapper(
+            ReasonAgent(settings, self.state, self.tools),
+            baseline_path=output_dir.parent / "baseline" / "telemetry.csv",
+            log_path=output_dir / "policy_log.jsonl",
+        )
         self.handles: dict[str, int] = {}
         self.last_energy_kwh = 0.0
         self.last_reason_minute = -1

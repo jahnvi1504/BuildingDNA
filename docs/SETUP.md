@@ -9,6 +9,7 @@ Python 3.12 environment under `.venv/`.
 .\.venv\Scripts\python.exe scripts\verify_ems_callback.py
 .\.venv\Scripts\pytest.exe
 .\.venv\Scripts\ecoloop.exe reason-smoke
+.\.venv\Scripts\ecoloop.exe policy-evaluate
 ```
 
 ## Run
@@ -18,6 +19,10 @@ Python 3.12 environment under `.venv/`.
 .\.venv\Scripts\ecoloop.exe simulate --mode agent
 .\.venv\Scripts\streamlit.exe run dashboard.py
 ```
+
+The dashboard labels its animated timeline as **Simulated Year Replay**. It
+uses completed telemetry, reasoning events, and the generated 48-hour
+macro-policy log; it does not present saved data as a live stream.
 
 To enable Tier 2, rotate any previously exposed Groq key and store the replacement
 in the ignored `.env` file:

@@ -44,6 +44,26 @@ provider error becomes a `reason_failure` log entry while the simulation
 continues. The saved agent run intentionally demonstrates this independence:
 it completed with no `GROQ_API_KEY`.
 
+## Macro-policy wrapper
+
+`PolicyReasonWrapper` surrounds the existing reason agent. It observes the same
+cumulative metrics but has no actuator or reflex-controller reference. Every
+48 simulated hours it calculates a fixed weighted score:
+
+- 45% episode electricity saved versus the baseline;
+- 35% reduction in occupied comfort-violation zone-timesteps;
+- 20% episode carbon avoided.
+
+Three consecutive episode scores establish a trend. A declining trend moves
+from `Energy Saver` toward `Balanced` and then `Comfort Priority`; an improving
+trend permits the reverse. The selected profile is added to Tier 2's telemetry
+context as a PMV target and maximum setpoint drift. Tier 1 remains the final
+safety authority and the policy wrapper never writes an actuator.
+
+Every completed episode is appended to `outputs/agent/policy_log.jsonl`.
+`ecoloop policy-evaluate` applies the identical state machine to saved baseline
+and agent telemetry for the completed-run replay.
+
 ## Live EnergyPlus integration
 
 `EnergyPlusRunner` registers
@@ -145,4 +165,3 @@ The callback performs no network I/O. Tier 2 runs on a daemon thread and drops
 overlapping triggers instead of accumulating stale decisions. Every external
 request is revalidated on the next callback. If Tier 2 is unavailable, Tier 1
 continues for the full simulation using its local occupied/unoccupied policy.
-

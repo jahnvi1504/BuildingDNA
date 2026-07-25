@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from ecoloop.config import PROJECT_ROOT, settings
+from ecoloop.policy import build_policy_log
 from ecoloop.reason import ReasonAgent
 from ecoloop.simulation import EnergyPlusRunner
 from ecoloop.state import LiveState
@@ -19,6 +20,10 @@ def parser() -> argparse.ArgumentParser:
     simulate.add_argument("--output", type=Path)
     commands.add_parser("mcp", help="Run MCP server over stdio")
     commands.add_parser("reason-smoke", help="Make one safe Tier 2 Groq tool-calling request")
+    policy = commands.add_parser(
+        "policy-evaluate", help="Score saved runs and write the macro-policy log"
+    )
+    policy.add_argument("--episode-hours", type=int, default=48)
     return root
 
 
@@ -48,6 +53,15 @@ def main() -> int:
         agent.observe(state.snapshot())
         event = agent.run_once()
         print(json.dumps({**event, "api_key": "redacted"}, indent=2))
+        return 0
+    if args.command == "policy-evaluate":
+        events = build_policy_log(
+            PROJECT_ROOT / "outputs" / "baseline" / "telemetry.csv",
+            PROJECT_ROOT / "outputs" / "agent" / "telemetry.csv",
+            PROJECT_ROOT / "outputs" / "agent" / "policy_log.jsonl",
+            args.episode_hours,
+        )
+        print(f"Wrote {len(events)} policy episodes.")
         return 0
     output = args.output or PROJECT_ROOT / "outputs" / args.mode
     return EnergyPlusRunner(settings, args.mode, output).run()
