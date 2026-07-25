@@ -59,7 +59,53 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "adjust_schedule",
+            "description": "Queue bounded schedule operations for the live controller.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "schedule_name": {"type": "string"},
+                    "ops": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "maxItems": 4,
+                    },
+                },
+                "required": ["schedule_name", "ops"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_error_log",
+            "description": "Return recent EnergyPlus and controller errors.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "patch_idf",
+            "description": (
+                "Patch an allow-listed IDF field after diagnosing a severe error. "
+                "Use only when get_error_log shows a concrete model fault."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"diff": {"type": "object"}},
+                "required": ["diff"],
+            },
+        },
+    },
 ]
+
+MUTATING_TOOLS = {"set_setpoint", "adjust_schedule", "patch_idf"}
+MAX_TOOL_ROUNDS = 3
+MAX_ACTIONS = 2
 
 
 class ReasonAgent:
@@ -84,68 +130,17 @@ class ReasonAgent:
         threading.Thread(target=self._run, daemon=True, name="ecoloop-reason").start()
         return True
 
+    def run_once(self) -> dict[str, Any]:
+        """Run one synchronous reasoning cycle; useful for startup checks and tests."""
+        if not self.settings.ecoloop_reason_enabled:
+            raise RuntimeError("Tier 2 is disabled by ECOLOOP_REASON_ENABLED")
+        if not self.settings.groq_api_key:
+            raise RuntimeError("GROQ_API_KEY is missing")
+        return self._reason()
+
     def _run(self) -> None:
         try:
-            from groq import Groq
-
-            client = Groq(api_key=self.settings.groq_api_key)
-            summary = list(self.windows)
-            messages: list[dict[str, Any]] = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You supervise an EnergyPlus office. Minimize electricity and carbon while "
-                        "keeping occupied-zone PMV between -0.5 and +0.5. Tier 1 enforces hard safety. "
-                        "Use tools for telemetry and at most two setpoint actions. Return a concise "
-                        "plain-language justification describing evidence, action, and expected effect."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": "Aggregated recent telemetry:\n" + json.dumps(summary, separators=(",", ":")),
-                },
-            ]
-            response = client.chat.completions.create(
-                model=self.settings.groq_model,
-                messages=messages,
-                tools=TOOL_SCHEMAS,
-                tool_choice="auto",
-                temperature=0.1,
-                max_completion_tokens=600,
-            )
-            message = response.choices[0].message
-            actions: list[dict[str, Any]] = []
-            if message.tool_calls:
-                messages.append(message.model_dump(exclude_none=True))
-                for call in message.tool_calls:
-                    args = json.loads(call.function.arguments or "{}")
-                    result = getattr(self.tools, call.function.name)(**args)
-                    actions.append({"tool": call.function.name, "arguments": args, "result": result})
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call.id,
-                            "content": json.dumps(result),
-                        }
-                    )
-                final = client.chat.completions.create(
-                    model=self.settings.groq_model,
-                    messages=messages,
-                    temperature=0.1,
-                    max_completion_tokens=180,
-                )
-                justification = final.choices[0].message.content or "Action issued from telemetry."
-            else:
-                justification = message.content or "No supervisory change was needed."
-            self.state.log_reason(
-                {
-                    "type": "reason_action",
-                    "simulation_time": self.state.snapshot()["simulation_time"],
-                    "model": self.settings.groq_model,
-                    "actions": actions,
-                    "justification": justification,
-                }
-            )
+            self._reason()
         except Exception as exc:
             self.state.add_error(f"Reason layer error: {exc}")
             self.state.log_reason(
@@ -159,3 +154,66 @@ class ReasonAgent:
             with self._lock:
                 self._running = False
 
+    def _reason(self) -> dict[str, Any]:
+        from groq import Groq
+
+        client = Groq(api_key=self.settings.groq_api_key)
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are the Tier 2 supervisor for a live EnergyPlus office. Minimize electricity "
+                    "and carbon while occupied-zone PMV remains between -0.5 and +0.5. Tier 1 owns "
+                    "hard safety and clamps every request. Inspect telemetry before acting. Make no "
+                    "more than two mutating tool calls total. Never patch the IDF unless the error log "
+                    "contains a concrete severe model fault. Finish with a concise justification that "
+                    "states evidence, action (or no action), and expected effect."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "Recent hourly telemetry:\n"
+                + json.dumps(list(self.windows), separators=(",", ":")),
+            },
+        ]
+        actions: list[dict[str, Any]] = []
+        justification = "No supervisory change was needed."
+        for _ in range(MAX_TOOL_ROUNDS):
+            response = client.chat.completions.create(
+                model=self.settings.groq_model,
+                messages=messages,
+                tools=TOOL_SCHEMAS,
+                tool_choice="auto",
+                temperature=0.1,
+                max_completion_tokens=600,
+            )
+            message = response.choices[0].message
+            if not message.tool_calls:
+                justification = message.content or justification
+                break
+            messages.append(message.model_dump(exclude_none=True))
+            for call in message.tool_calls:
+                name = call.function.name
+                if name not in {schema["function"]["name"] for schema in TOOL_SCHEMAS}:
+                    result: Any = {"error": f"Tool {name!r} is not allowed"}
+                elif name in MUTATING_TOOLS and len(
+                    [action for action in actions if action["tool"] in MUTATING_TOOLS]
+                ) >= MAX_ACTIONS:
+                    result = {"error": "Tier 2 action limit reached"}
+                else:
+                    parsed_args = json.loads(call.function.arguments or "{}")
+                    args = parsed_args if isinstance(parsed_args, dict) else {}
+                    result = getattr(self.tools, name)(**args)
+                    actions.append({"tool": name, "arguments": args, "result": result})
+                messages.append(
+                    {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}
+                )
+        event = {
+            "type": "reason_action",
+            "simulation_time": self.state.snapshot()["simulation_time"],
+            "model": self.settings.groq_model,
+            "actions": actions,
+            "justification": justification,
+        }
+        self.state.log_reason(event)
+        return event

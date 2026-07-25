@@ -1,13 +1,14 @@
 # Local setup
 
 The prepared workspace uses EnergyPlus 26.1.0 unpacked under `.local/` and a
-Python 3.11 environment under `.venv/`.
+Python 3.12 environment under `.venv/`.
 
 ## Verify
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\verify_ems_callback.py
 .\.venv\Scripts\pytest.exe
+.\.venv\Scripts\ecoloop.exe reason-smoke
 ```
 
 ## Run
@@ -18,15 +19,18 @@ Python 3.11 environment under `.venv/`.
 .\.venv\Scripts\streamlit.exe run dashboard.py
 ```
 
-To enable Tier 2, rotate the previously exposed Groq key and set the replacement
-only in the current terminal:
+To enable Tier 2, rotate any previously exposed Groq key and store the replacement
+in the ignored `.env` file:
 
-```powershell
-$env:GROQ_API_KEY = "replacement-key"
+```dotenv
+GROQ_API_KEY=replacement-key
+GROQ_MODEL=llama-3.3-70b-versatile
+ECOLOOP_REASON_ENABLED=true
 ```
 
-The default Groq model is `llama-3.3-70b-versatile`. Tier 1 operates when this
-variable is missing.
+Run `ecoloop reason-smoke` before a long simulation. It makes one real Groq
+request, exercises telemetry and bounded control tools, and redacts the key from
+its output. Tier 1 continues independently when Tier 2 is disabled or unavailable.
 
 ## MCP
 
@@ -35,4 +39,3 @@ variable is missing.
 ```
 
 This starts the eight-tool MCP server over stdio.
-
