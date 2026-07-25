@@ -1,0 +1,39 @@
+.env
+.venv/
+.downloads/
+.local/
+.vscode/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# EnergyPlus transition byproducts
+*.idfnew
+*.idfold
+*.VCpErr
+*.vcperr
+
+# Keep only the canonical Bengaluru EPW.
+models/weather/*
+!models/weather/bengaluru.epw
+
+# EnergyPlus and application runtime artifacts
+outputs/*
+!outputs/callback-proof/
+outputs/callback-proof/*
+!outputs/callback-proof/callback-proof.json
+!outputs/baseline/
+outputs/baseline/*
+!outputs/baseline/summary.json
+!outputs/agent/
+outputs/agent/*
+!outputs/agent/summary.json
+!outputs/agent/reasoning.jsonl
+runtime/
+*.eso
+*.mtr
+*.sqlite
+*.audit
+eplusout.*

@@ -1,0 +1,119 @@
+{
+  "energyplus_version": "26.1.0-6f2e40d102",
+  "api_version": "0.2",
+  "exit_code": 0,
+  "sensor_handle": 12,
+  "actuator_handle": 9,
+  "sample_count": 12,
+  "samples": [
+    {
+      "day_of_year": 1,
+      "hour": 0,
+      "minutes": 15,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 21.8847,
+      "requested_cooling_setpoint_c": 24.0,
+      "observed_actuator_value_c": 24.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 0,
+      "minutes": 30,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 22.0176,
+      "requested_cooling_setpoint_c": 25.0,
+      "observed_actuator_value_c": 25.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 0,
+      "minutes": 45,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 21.1359,
+      "requested_cooling_setpoint_c": 24.0,
+      "observed_actuator_value_c": 24.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 0,
+      "minutes": 60,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 20.5359,
+      "requested_cooling_setpoint_c": 25.0,
+      "observed_actuator_value_c": 25.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 1,
+      "minutes": 15,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 20.0102,
+      "requested_cooling_setpoint_c": 24.0,
+      "observed_actuator_value_c": 24.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 1,
+      "minutes": 30,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 19.5695,
+      "requested_cooling_setpoint_c": 25.0,
+      "observed_actuator_value_c": 25.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 1,
+      "minutes": 45,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 19.2353,
+      "requested_cooling_setpoint_c": 24.0,
+      "observed_actuator_value_c": 24.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 1,
+      "minutes": 60,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 18.9293,
+      "requested_cooling_setpoint_c": 25.0,
+      "observed_actuator_value_c": 25.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 2,
+      "minutes": 15,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 18.6546,
+      "requested_cooling_setpoint_c": 24.0,
+      "observed_actuator_value_c": 24.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 2,
+      "minutes": 30,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 18.4097,
+      "requested_cooling_setpoint_c": 25.0,
+      "observed_actuator_value_c": 25.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 2,
+      "minutes": 45,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 18.1903,
+      "requested_cooling_setpoint_c": 24.0,
+      "observed_actuator_value_c": 24.0
+    },
+    {
+      "day_of_year": 1,
+      "hour": 2,
+      "minutes": 60,
+      "zone": "SPACE1-1",
+      "zone_temperature_c": 17.9965,
+      "requested_cooling_setpoint_c": 25.0,
+      "observed_actuator_value_c": 25.0
+    }
+  ],
+  "failure": null
+}
