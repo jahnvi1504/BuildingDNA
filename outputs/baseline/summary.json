@@ -1,32 +1,39 @@
 {
   "mode": "baseline",
+  "run_scope": "representative_periods",
+  "representative_periods": [
+    "01-15:01-21",
+    "04-15:04-21",
+    "07-15:07-21",
+    "10-15:10-21"
+  ],
   "exit_code": 0,
   "energyplus_version": "26.1.0-6f2e40d102",
-  "telemetry_rows": 156645,
-  "simulation_time": "day-365 23:60",
-  "day_of_year": 365,
+  "telemetry_rows": 32838,
+  "simulation_time": "day-294 23:60",
+  "day_of_year": 294,
   "hour": 23,
   "minute": 60,
   "zone_temperatures_c": {
-    "Core_ZN": 26.7163,
-    "Perimeter_ZN_1": 27.6292,
-    "Perimeter_ZN_2": 26.8969,
-    "Perimeter_ZN_3": 26.0766,
-    "Perimeter_ZN_4": 26.6001
+    "Core_ZN": 26.9719,
+    "Perimeter_ZN_1": 27.4398,
+    "Perimeter_ZN_2": 27.5474,
+    "Perimeter_ZN_3": 26.9269,
+    "Perimeter_ZN_4": 27.4599
   },
   "pmv": {
-    "Core_ZN": 0.951,
-    "Perimeter_ZN_1": 1.27,
-    "Perimeter_ZN_2": 1.014,
-    "Perimeter_ZN_3": 0.727,
-    "Perimeter_ZN_4": 0.91
+    "Core_ZN": 1.04,
+    "Perimeter_ZN_1": 1.204,
+    "Perimeter_ZN_2": 1.242,
+    "Perimeter_ZN_3": 1.024,
+    "Perimeter_ZN_4": 1.211
   },
-  "energy_kwh": 79870.8819606252,
+  "energy_kwh": 9156.240273688347,
   "carbon_intensity_kg_per_kwh": 0.8,
-  "carbon_kg": 52259.377579580905,
+  "carbon_kg": 6157.2722166861795,
   "heating_setpoint_c": 15.56,
   "cooling_setpoint_c": 29.44,
-  "comfort_violation_count": 89179,
+  "comfort_violation_count": 7604,
   "reflex_interventions": 0,
   "errors": [],
   "pmv_method": "operative-temperature proxy: clip((T-24)*0.35, -3, 3)"

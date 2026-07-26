@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,8 +38,14 @@ class Settings(BaseSettings):
         default="llama3.1:8b",
         validation_alias="ECOLOOP_LLM_MODEL",
     )
+    llm_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        validation_alias="ECOLOOP_LLM_TIMEOUT_SECONDS",
+    )
     ecoloop_reason_enabled: bool = True
     ecoloop_reason_interval_minutes: int = 60
+    ai_debate_mode: Literal["off", "compact", "full"] = "compact"
     ecoloop_full_year: bool = False
     ecoloop_representative_periods: list[str] = Field(
         default_factory=lambda: [

@@ -25,6 +25,7 @@ class Telemetry:
     day_of_year: int = 0
     hour: int = 0
     minute: int = 0
+    occupied: bool | None = None
     zone_temperatures_c: dict[str, float] = field(default_factory=dict)
     pmv: dict[str, float] = field(default_factory=dict)
     energy_kwh: float = 0.0
@@ -92,4 +93,3 @@ class LiveState:
         with self._lock:
             with self.reasoning_log.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(payload, ensure_ascii=False) + "\n")
-

@@ -53,6 +53,9 @@ outputs/integrated-demo/*
 !outputs/self-healing-demo/
 outputs/self-healing-demo/*
 !outputs/self-healing-demo/self-healing-proof.json
+!outputs/debate-demo/
+outputs/debate-demo/*
+!outputs/debate-demo/debate.json
 runtime/
 !models/runtime/
 !models/runtime/*.idf

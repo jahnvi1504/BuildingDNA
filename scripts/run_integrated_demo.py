@@ -59,7 +59,11 @@ def main() -> int:
     state = LiveState(reasoning_path)
     tools = ControlTools(state, MODEL_PATH, home / "Energy+.idd")
     reflex = ReflexController(settings, state)
-    client = OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+    client = OpenAI(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+        timeout=settings.llm_timeout_seconds,
+    )
     handles: dict[str, int] = {}
     proof: dict[str, Any] = {
         "model": MODEL_PATH.relative_to(PROJECT_ROOT).as_posix(),

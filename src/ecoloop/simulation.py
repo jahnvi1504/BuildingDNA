@@ -139,6 +139,7 @@ class EnergyPlusRunner:
                 day_of_year=day,
                 hour=hour,
                 minute=minute,
+                occupied=occupied,
                 zone_temperatures_c=temps,
                 pmv=pmv,
                 energy_kwh=energy_kwh,
@@ -174,12 +175,30 @@ class EnergyPlusRunner:
                         self.state.log_reason(
                             {
                                 "type": "reason_failure",
+                                "event_type": "tier2_failure",
                                 "simulation_time": simulation_time,
                                 "actions": [],
-                                "justification": (
-                                    "Tier 2 unavailable; Tier 1 continued safely: "
-                                    f"{exc}"
+                                "justification": "Tier 2 unavailable; Tier 1 continued safely.",
+                                "optimization_priority": "safety_first",
+                                "diagnosis": "Tier 2 request failed.",
+                                "recommended_action": (
+                                    "Continue deterministic Tier 1 control."
                                 ),
+                                "reason": (
+                                    "LLM response was non-actionable; deterministic "
+                                    "fallback used."
+                                ),
+                                "expected_impact": {
+                                    "energy": "No AI-attributed change.",
+                                    "comfort": (
+                                        "Existing deterministic safety envelope remains active."
+                                    ),
+                                },
+                                "confidence": 1.0,
+                                "safety_status": "deterministic_fallback",
+                                "applied_action": None,
+                                "fallback_used": True,
+                                "raw_response": str(exc),
                             }
                         )
                     self.last_reason_minute = absolute_minute
@@ -217,12 +236,25 @@ class EnergyPlusRunner:
             self.state.log_reason(
                 {
                     "type": "reason_disabled",
+                    "event_type": "tier2_disabled",
                     "simulation_time": self.state.snapshot()["simulation_time"],
                     "actions": [],
                     "justification": (
                         "The configured local LLM did not produce a saved Tier 2 action; "
                         "Tier 1 completed the run independently."
                     ),
+                    "optimization_priority": "safety_first",
+                    "diagnosis": "Tier 2 produced no saved decision.",
+                    "recommended_action": "Continue deterministic Tier 1 control.",
+                    "reason": "Tier 1 completed the run independently.",
+                    "expected_impact": {
+                        "energy": "No AI-attributed change.",
+                        "comfort": "Deterministic safety control remained active.",
+                    },
+                    "confidence": 1.0,
+                    "safety_status": "deterministic_only",
+                    "applied_action": None,
+                    "fallback_used": True,
                 }
             )
         telemetry_path = self.output_dir / "telemetry.csv"

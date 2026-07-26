@@ -9,6 +9,28 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from ecoloop.decision import normalize_reasoning_record, reasoning_card_html
+from ecoloop.dashboard_ui import (
+    DASHBOARD_TITLE,
+    PRODUCT_NAME,
+    TOTAL_POLICY_EPISODES,
+    debate_replay_html,
+    episode_exceeds_total,
+    format_episode_progress,
+    load_json_document,
+    parse_episode_number,
+    representative_block_index,
+    representative_position,
+    representative_ticks,
+)
+from ecoloop.config import settings
+from ecoloop.debate_replay import (
+    DEBATE_REPLAY_PATH,
+    load_debate_events,
+    replay_snapshot,
+    select_debate_replay,
+)
+
 
 ROOT = Path(__file__).resolve().parent
 OUTPUTS = ROOT / "outputs"
@@ -20,7 +42,7 @@ MODE_COLORS = {
     "Comfort Priority": "#ffbd59",
 }
 
-st.set_page_config(page_title="Eco-Loop Control Room", page_icon="◉", layout="wide")
+st.set_page_config(page_title=DASHBOARD_TITLE, page_icon="◉", layout="wide")
 st.markdown(
     """
     <style>
@@ -54,8 +76,17 @@ st.markdown(
       .reason { border-left:2px solid var(--green);padding:.8rem 1rem;margin:.6rem 0;background:rgba(16,32,27,.78);border-radius:0 10px 10px 0; }
       .reason small { color:var(--muted);font:500 .7rem "DM Mono"; }
       .reason-mode { display:inline-block;border:1px solid #365c4c;border-radius:99px;padding:.15rem .45rem;margin-left:.4rem;color:#b9d3c8; }
+      .reason-compact { display:flex;align-items:center;gap:.7rem;border-left:2px solid var(--green);padding:.8rem 1rem;margin:.35rem 0;background:rgba(16,32,27,.78);border-radius:0 10px 10px 0;min-height:42px; }
+      .reason-day { color:#b8cec5;font:500 .76rem "DM Mono"; }
+      .debate-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem;margin:.65rem 0; }
+      .debate-card { background:rgba(13,29,24,.92);border:1px solid #2d5042;border-radius:13px;padding:.85rem;min-width:0; }
+      .debate-role { color:var(--green);font:500 .67rem "DM Mono";letter-spacing:.1em;text-transform:uppercase;margin-bottom:.45rem; }
+      .debate-copy { color:#d5e5de;font-size:.82rem;line-height:1.45; }
+      .debate-meta { color:#91aaa0;font:500 .68rem "DM Mono";margin-top:.55rem; }
+      .debate-final { border:1px solid #477461;border-radius:12px;background:rgba(29,59,47,.72);padding:.75rem .9rem;margin:.5rem 0 1rem;color:#d9ebe3; }
+      .debate-source { display:inline-block;border:1px solid #477461;border-radius:99px;padding:.2rem .55rem;color:var(--green);font:500 .66rem "DM Mono";letter-spacing:.1em; }
       .section-kicker { color:var(--green);font:500 .68rem "DM Mono";letter-spacing:.12em;text-transform:uppercase;margin-top:1.4rem; }
-      @media (max-width:1000px) { .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.policy-hero{align-items:flex-start;flex-direction:column}.policy-meta{text-align:left;} }
+      @media (max-width:1000px) { .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.debate-grid{grid-template-columns:1fr}.policy-hero{align-items:flex-start;flex-direction:column}.policy-meta{text-align:left;} }
       @media (max-width:620px) { .kpi-grid{grid-template-columns:1fr}.block-container{padding-left:1rem;padding-right:1rem}.kpi-value{font-size:1.8rem;} }
     </style>
     """,
@@ -65,14 +96,12 @@ st.markdown(
 
 @st.cache_data
 def load_summary(mode: str) -> dict[str, Any]:
-    path = RESULTS / mode / "summary.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return load_json_document(RESULTS / mode / "summary.json")
 
 
 @st.cache_data
 def load_proof(name: str) -> dict[str, Any]:
-    path = OUTPUTS / name
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return load_json_document(OUTPUTS / name)
 
 
 @st.cache_data
@@ -108,7 +137,9 @@ def hourly_replay(mode: str) -> pd.DataFrame:
         }
     )
     hourly = frame.groupby("hour_bin", as_index=False).agg(aggregations)
-    hourly["hourly_kwh"] = hourly["energy_kwh"].diff().clip(lower=0).fillna(0)
+    energy_delta = hourly["energy_kwh"].diff().clip(lower=0)
+    contiguous = hourly["hour_bin"].diff().eq(1)
+    hourly["hourly_kwh"] = energy_delta.where(contiguous, 0).fillna(0)
     hourly["day"] = hourly["hour_bin"] // 24 + 1
     return hourly
 
@@ -166,10 +197,14 @@ def active_policy(policy: pd.DataFrame, hour: int) -> pd.Series:
     return eligible.iloc[-1] if not eligible.empty else policy.iloc[0]
 
 
-def add_policy_markers(fig: go.Figure, switches: pd.DataFrame) -> None:
+def add_policy_markers(
+    fig: go.Figure,
+    switches: pd.DataFrame,
+    x_column: str = "simulated_hour",
+) -> None:
     for row in switches.itertuples(index=False):
         fig.add_vline(
-            x=row.simulated_hour,
+            x=getattr(row, x_column),
             line_width=1,
             line_dash="dot",
             line_color=MODE_COLORS.get(row.mode, "#57e39f"),
@@ -194,6 +229,31 @@ def chart_layout(fig: go.Figure, title: str, y_title: str) -> None:
     fig.update_yaxes(gridcolor="rgba(92,130,113,.12)")
 
 
+def compact_timeline_layout(fig: go.Figure, available_hours: list[int]) -> None:
+    ticks, labels = representative_ticks(available_hours)
+    if len(ticks) == 1 and len(available_hours) > 24 * 300:
+        ticks = [0, 2160, 4344, 6552, len(available_hours) - 1]
+        labels = ["Jan", "Apr", "Jul", "Oct", "Dec"]
+    fig.update_xaxes(
+        title=(
+            "Continuous simulation year"
+            if len(representative_ticks(available_hours)[0]) == 1
+            else "Representative simulation periods"
+        ),
+        tickmode="array",
+        tickvals=ticks,
+        ticktext=labels,
+        range=[-1, max(1, len(set(available_hours)))],
+    )
+    for tick in ticks[1:]:
+        fig.add_vline(
+            x=tick - 0.5,
+            line_width=1,
+            line_dash="dash",
+            line_color="rgba(87,227,159,.28)",
+        )
+
+
 def selected_hour(event: Any) -> int | None:
     try:
         point = event.selection.points[0]
@@ -205,17 +265,23 @@ def selected_hour(event: Any) -> int | None:
 
 baseline = load_summary("baseline")
 agent = load_summary("agent")
+comparison = load_proof("matched-12h/comparison.json")
 integrated_proof = load_proof("integrated-demo/integrated-proof.json")
 self_healing_proof = load_proof("self-healing-demo/self-healing-proof.json")
 baseline_hourly = hourly_replay("baseline")
 agent_hourly = hourly_replay("agent")
+available_hours = (
+    sorted(agent_hourly["hour_bin"].astype(int).unique().tolist())
+    if not agent_hourly.empty
+    else []
+)
 policy = load_policy()
 reasons = load_reasons()
 
 st.markdown('<div class="brand">Honeywell Hackathon · Bengaluru</div>', unsafe_allow_html=True)
 hero_left, hero_right = st.columns([4, 1])
 with hero_left:
-    st.title("Eco-Loop control room")
+    st.title(DASHBOARD_TITLE)
     st.caption(
         "Verified EnergyPlus telemetry, adaptive macro-policy scoring, and explainable control replay."
     )
@@ -246,6 +312,7 @@ with proof_right:
 if (
     not baseline
     or not agent
+    or not comparison
     or baseline_hourly.empty
     or agent_hourly.empty
     or policy.empty
@@ -256,20 +323,56 @@ if (
     )
     st.stop()
 
+period_count = len(agent.get("representative_periods", []))
+simulated_hours = len(available_hours)
+tier2_actual = int(comparison.get("actual_tier2_events", 0))
+tier2_expected = int(comparison.get("expected_tier2_cycles", 0))
+matched_status = (
+    baseline.get("exit_code") == 0
+    and agent.get("exit_code") == 0
+    and tier2_expected > 0
+    and tier2_actual == tier2_expected
+)
+st.markdown(
+    (
+        '<div class="replay-strip"><span class="replay-label">'
+        f'{"✓" if matched_status else "!"} MATCHED EVALUATION '
+        f'{"VERIFIED" if matched_status else "CHECK REQUIRED"}</span>'
+        f'<br><small>{period_count} seasonal weeks · {simulated_hours:,} simulated hours · '
+        f'Tier 2 {tier2_actual}/{tier2_expected} checkpoints · '
+        f'baseline exit {baseline.get("exit_code", "—")} · '
+        f'agent exit {agent.get("exit_code", "—")}</small></div>'
+    ),
+    unsafe_allow_html=True,
+)
+
 if "replay_hour" not in st.session_state:
-    st.session_state.replay_hour = 0
+    st.session_state.replay_hour = available_hours[0] if available_hours else 0
 if "playing" not in st.session_state:
     st.session_state.playing = False
 if "replay_speed" not in st.session_state:
     st.session_state.replay_speed = 24
 if "pending_hour" in st.session_state:
     st.session_state.replay_hour = st.session_state.pop("pending_hour")
+if available_hours and int(st.session_state.replay_hour) not in set(available_hours):
+    nearest_index = representative_position(
+        int(st.session_state.replay_hour),
+        available_hours,
+    )
+    st.session_state.replay_hour = available_hours[nearest_index]
 
 current_policy = active_policy(policy, int(st.session_state.replay_hour))
 current_index = int(current_policy.name)
 previous_score = policy.iloc[max(0, current_index - 1)]["rolling_score"]
 trend = "↗" if current_policy["rolling_score"] > previous_score else "↘"
 profile = current_policy.get("profile", {})
+current_episode = parse_episode_number(current_policy.get("episode"))
+episode_progress = format_episode_progress(current_episode)
+if episode_exceeds_total(current_episode):
+    st.warning(
+        f"Policy data reports episode {current_episode}, above the configured "
+        f"{TOTAL_POLICY_EPISODES}-episode run total. Displaying the raw current value."
+    )
 
 st.markdown(
     f"""
@@ -279,7 +382,7 @@ st.markdown(
         <div class="policy-mode" style="color:{MODE_COLORS[current_policy['mode']]}">{html.escape(current_policy['mode'])}</div>
       </div>
       <div class="policy-meta">
-        Episode {int(current_policy['episode'])} / {len(policy)} &nbsp;·&nbsp;
+        {episode_progress} &nbsp;·&nbsp;
         rolling score {current_policy['rolling_score']:.2f} {trend}<br>
         PMV target {profile.get('comfort_band', ['—','—'])[0]} to {profile.get('comfort_band', ['—','—'])[1]}
         &nbsp;·&nbsp; max drift {profile.get('max_setpoint_drift_c', '—')}°C
@@ -288,6 +391,33 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+replay_hour = int(st.session_state.replay_hour)
+debate_row = agent_hourly.iloc[
+    (agent_hourly["hour_bin"] - replay_hour).abs().argsort()[:1]
+].iloc[0]
+policy_context = {
+    "mode": current_policy["mode"],
+    **(profile if isinstance(profile, dict) else {}),
+}
+current_snapshot = replay_snapshot(
+    debate_row.to_dict(),
+    replay_hour,
+    policy_context,
+)
+selected_debate = select_debate_replay(
+    load_debate_events(DEBATE_REPLAY_PATH),
+    replay_hour,
+    current_snapshot,
+    settings,
+)
+
+st.markdown('<div class="section-kicker">AI debate mode</div>', unsafe_allow_html=True)
+st.caption(
+    "Replay-only decision at the nearest saved timestep. Energy percentages are "
+    "estimates unless explicitly identified as measured simulation output."
+)
+st.markdown(debate_replay_html(selected_debate) or "", unsafe_allow_html=True)
 
 savings = 100 * (baseline["energy_kwh"] - agent["energy_kwh"]) / baseline["energy_kwh"]
 carbon_savings = 100 * (baseline["carbon_kg"] - agent["carbon_kg"]) / baseline["carbon_kg"]
@@ -337,15 +467,21 @@ switches = mode_intervals[mode_intervals["mode"].ne(mode_intervals["mode"].shift
 @st.fragment(run_every=0.8 if st.session_state.playing else None)
 def replay_panel() -> None:
     if st.session_state.playing:
-        st.session_state.replay_hour = min(
-            8759, st.session_state.replay_hour + int(st.session_state.replay_speed)
+        current_position = representative_position(
+            int(st.session_state.replay_hour),
+            available_hours,
         )
-        if st.session_state.replay_hour >= 8759:
+        next_position = min(
+            len(available_hours) - 1,
+            current_position + int(st.session_state.replay_speed),
+        )
+        st.session_state.replay_hour = available_hours[next_position]
+        if next_position >= len(available_hours) - 1:
             st.session_state.playing = False
 
     st.markdown(
-        '<div class="replay-strip"><span class="replay-label">▶ Simulated Year Replay</span>'
-        '<br><small>Replay of the completed, callback-verified EnergyPlus run — not live telemetry.</small></div>',
+        '<div class="replay-strip"><span class="replay-label">▶ Sampled Period Replay</span>'
+        '<br><small>Measured EnergyPlus telemetry only — unsimulated calendar gaps are skipped.</small></div>',
         unsafe_allow_html=True,
     )
     controls = st.columns([1, 1, 2, 8])
@@ -363,12 +499,14 @@ def replay_panel() -> None:
         key="replay_speed",
         label_visibility="collapsed",
     )
-    controls[3].slider(
+    controls[3].select_slider(
         "Simulation hour",
-        0,
-        8759,
+        options=available_hours,
         key="replay_hour",
-        help="Drag across the completed simulated year.",
+        help=(
+            "Select a measured telemetry hour. The replay skips unsimulated time "
+            "between representative weeks."
+        ),
     )
 
     hour = int(st.session_state.replay_hour)
@@ -384,7 +522,8 @@ def replay_panel() -> None:
 
     st.caption(
         f"Day {hour // 24 + 1:03d} · {hour % 24:02d}:00 · "
-        f"{policy_row['mode']} · Episode {int(policy_row['episode'])}"
+        f"{policy_row['mode']} · "
+        f"{format_episode_progress(parse_episode_number(policy_row.get('episode')))}"
     )
     values = st.columns(5)
     cards = [
@@ -437,9 +576,9 @@ def replay_panel() -> None:
             x=replay_window["hour_bin"],
             y=replay_window[f"temp_{zone}"],
             customdata=replay_window[["hour_bin"]],
-            name="Eco-Loop",
+            name=PRODUCT_NAME,
             line={"color": "#57e39f", "width": 2.5},
-            hovertemplate="%{y:.2f}°C<extra>Eco-Loop</extra>",
+            hovertemplate=f"%{{y:.2f}}°C<extra>{PRODUCT_NAME}</extra>",
         )
     )
     temperature_fig.add_vline(x=hour, line_color="#ffffff", line_width=1.5)
@@ -451,6 +590,15 @@ def replay_panel() -> None:
         ],
     )
     chart_layout(temperature_fig, f"{zone} temperature · ±7 day window", "Temperature (°C)")
+    visible_hours = pd.concat(
+        [replay_window["hour_bin"], baseline_window["hour_bin"]],
+        ignore_index=True,
+    ).dropna()
+    if not visible_hours.empty:
+        lower = float(visible_hours.min())
+        upper = float(visible_hours.max())
+        padding = max(2.0, (upper - lower) * 0.03)
+        temperature_fig.update_xaxes(range=[lower - padding, upper + padding])
     event = st.plotly_chart(
         temperature_fig,
         use_container_width=True,
@@ -464,20 +612,20 @@ def replay_panel() -> None:
         st.rerun(scope="app")
 
     if active_reason is not None:
-        reason_text = active_reason.get(
-            "justification", active_reason.get("diagnosis", "Action recorded.")
-        )
         st.markdown(
-            f'<div class="reason"><small>Active reasoning at hour {hour:,}'
-            f'<span class="reason-mode">{html.escape(policy_row["mode"])}</span></small><br>'
-            f'{html.escape(str(reason_text))}</div>',
+            reasoning_card_html(active_reason.to_dict(), str(policy_row["mode"])),
             unsafe_allow_html=True,
         )
+        with st.expander("Technical details", expanded=False):
+            st.json(normalize_reasoning_record(active_reason.to_dict())["raw_record"])
 
 
 replay_panel()
 
-st.markdown('<div class="section-kicker">Annual performance</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-kicker">Representative-period performance</div>',
+    unsafe_allow_html=True,
+)
 hours_per_period = {"Daily": 24, "Weekly": 168, "Monthly": 730}[resolution]
 
 
@@ -486,12 +634,11 @@ def period_consumption(frame: pd.DataFrame) -> pd.DataFrame:
     result["period"] = result["hour_bin"] // hours_per_period
     grouped = result.groupby("period", as_index=False).agg(
         simulated_hour=("hour_bin", "max"),
-        cumulative_kwh=("energy_kwh", "max"),
+        period_kwh=("hourly_kwh", "sum"),
         samples=("hour_bin", "size"),
     )
-    grouped["period_kwh"] = grouped["cumulative_kwh"].diff()
     expected = hours_per_period
-    return grouped[grouped["period_kwh"].notna() & (grouped["samples"] >= expected * 0.5)]
+    return grouped[grouped["samples"] >= expected * 0.5]
 
 
 baseline_periods = period_consumption(baseline_hourly)
@@ -506,12 +653,20 @@ agent_periods = agent_periods[agent_periods["mode"].isin(mode_filter)]
 baseline_periods = baseline_periods[
     baseline_periods["period"].isin(agent_periods["period"])
 ]
+for frame in (baseline_periods, agent_periods):
+    frame["timeline_position"] = frame["simulated_hour"].map(
+        lambda value: representative_position(value, available_hours)
+    )
+timeline_switches = switches.copy()
+timeline_switches["timeline_position"] = timeline_switches["simulated_hour"].map(
+    lambda value: representative_position(value, available_hours)
+)
 
 energy_fig = go.Figure()
 if overlay:
     energy_fig.add_trace(
         go.Scatter(
-            x=baseline_periods["simulated_hour"],
+            x=baseline_periods["timeline_position"],
             y=baseline_periods["period_kwh"],
             customdata=baseline_periods[["simulated_hour"]],
             name="Fixed schedule",
@@ -521,20 +676,20 @@ if overlay:
     )
     energy_fig.add_trace(
         go.Scatter(
-            x=agent_periods["simulated_hour"],
+            x=agent_periods["timeline_position"],
             y=agent_periods["period_kwh"],
             customdata=agent_periods[["simulated_hour"]],
-            name="Eco-Loop agent",
+            name=f"{PRODUCT_NAME} agent",
             line={"color": "#57e39f", "width": 2.5},
             fill="tonexty",
             fillcolor="rgba(87,227,159,.08)",
-            hovertemplate="%{y:,.2f} kWh<extra>Eco-Loop agent</extra>",
+            hovertemplate=f"%{{y:,.2f}} kWh<extra>{PRODUCT_NAME} agent</extra>",
         )
     )
 else:
     energy_fig.add_trace(
         go.Bar(
-            x=baseline_periods["simulated_hour"],
+            x=baseline_periods["timeline_position"],
             y=baseline_periods["period_kwh"],
             customdata=baseline_periods[["simulated_hour"]],
             name="Fixed schedule",
@@ -545,22 +700,27 @@ else:
     )
     energy_fig.add_trace(
         go.Bar(
-            x=agent_periods["simulated_hour"],
+            x=agent_periods["timeline_position"],
             y=agent_periods["period_kwh"],
             customdata=agent_periods[["simulated_hour"]],
-            name="Eco-Loop agent",
+            name=f"{PRODUCT_NAME} agent",
             marker_color="#57e39f",
             opacity=0.86,
-            hovertemplate="%{y:,.2f} kWh<extra>Eco-Loop agent</extra>",
+            hovertemplate=f"%{{y:,.2f}} kWh<extra>{PRODUCT_NAME} agent</extra>",
         )
     )
     energy_fig.update_layout(barmode="group")
-add_policy_markers(energy_fig, switches[switches["mode"].isin(mode_filter)])
+add_policy_markers(
+    energy_fig,
+    timeline_switches[timeline_switches["mode"].isin(mode_filter)],
+    "timeline_position",
+)
 chart_layout(
     energy_fig,
     f"Facility electricity per {resolution.lower()} period",
     "Period electricity (kWh)",
 )
+compact_timeline_layout(energy_fig, available_hours)
 energy_event = st.plotly_chart(
     energy_fig,
     use_container_width=True,
@@ -584,6 +744,12 @@ comfort = pd.merge_asof(
 comfort = comfort[comfort["mode"].isin(mode_filter)]
 sample_every = {"Daily": 1, "Weekly": 3, "Monthly": 6}[resolution]
 comfort = comfort.iloc[::sample_every]
+comfort["timeline_position"] = comfort["hour_bin"].map(
+    lambda value: representative_position(value, available_hours)
+)
+comfort["period_block"] = comfort["hour_bin"].map(
+    lambda value: representative_block_index(value, available_hours)
+)
 comfort_fig = go.Figure()
 comfort_fig.add_hrect(
     y0=-0.5,
@@ -592,18 +758,29 @@ comfort_fig.add_hrect(
     line_width=0,
     annotation_text="Target comfort envelope",
 )
-comfort_fig.add_trace(
-    go.Scattergl(
-        x=comfort["hour_bin"],
-        y=comfort[f"pmv_{zone}"],
-        customdata=comfort[["hour_bin", "mode"]],
-        line={"color": "#ffbd59", "width": 1.35},
-        name=f"{zone} PMV",
-        hovertemplate="PMV %{y:+.3f}<br>%{customdata[1]}<extra></extra>",
+for block_index, block_rows in comfort.groupby("period_block", sort=True):
+    comfort_fig.add_trace(
+        go.Scattergl(
+            x=block_rows["timeline_position"],
+            y=block_rows[f"pmv_{zone}"],
+            customdata=block_rows[["hour_bin", "mode"]],
+            line={"color": "#ffbd59", "width": 1.35},
+            name=f"{zone} PMV",
+            legendgroup="comfort",
+            showlegend=bool(block_index == comfort["period_block"].min()),
+            hovertemplate=(
+                "Hour %{customdata[0]:,.0f}<br>PMV %{y:+.3f}"
+                "<br>%{customdata[1]}<extra></extra>"
+            ),
+        )
     )
+add_policy_markers(
+    comfort_fig,
+    timeline_switches[timeline_switches["mode"].isin(mode_filter)],
+    "timeline_position",
 )
-add_policy_markers(comfort_fig, switches[switches["mode"].isin(mode_filter)])
 chart_layout(comfort_fig, f"{zone} comfort envelope", "PMV estimate")
+compact_timeline_layout(comfort_fig, available_hours)
 comfort_fig.update_yaxes(range=[-2, 2])
 comfort_event = st.plotly_chart(
     comfort_fig,
@@ -619,25 +796,61 @@ if comfort_clicked is not None:
 
 st.markdown('<div class="section-kicker">Policy episodes</div>', unsafe_allow_html=True)
 policy_view = policy[policy["mode"].isin(mode_filter)]
+policy_view = policy_view.copy()
+policy_view["timeline_position"] = policy_view["simulated_hour"].map(
+    lambda value: representative_position(value, available_hours)
+)
+policy_view["period_block"] = policy_view["simulated_hour"].map(
+    lambda value: representative_block_index(value, available_hours)
+)
 policy_fig = go.Figure()
-for mode, color in MODE_COLORS.items():
-    mode_rows = policy_view[policy_view["mode"] == mode]
+for _, block_rows in policy_view.groupby("period_block", sort=True):
+    block_rows = block_rows.sort_values("simulated_hour")
     policy_fig.add_trace(
         go.Scatter(
-            x=mode_rows["simulated_hour"],
-            y=mode_rows["rolling_score"],
-            customdata=mode_rows[["simulated_hour", "episode", "mode"]],
+            x=block_rows["timeline_position"],
+            y=block_rows["rolling_score"],
+            customdata=block_rows[["simulated_hour", "episode", "mode"]],
             mode="lines+markers",
-            name=mode,
-            line={"color": color, "width": 2},
-            marker={"size": 6},
+            showlegend=False,
+            line={"color": "#9cb8ac", "width": 2},
+            marker={
+                "size": 8,
+                "color": block_rows["mode"].map(MODE_COLORS),
+                "line": {"color": "#08110f", "width": 1},
+            },
             hovertemplate=(
-                "Episode %{customdata[1]}<br>Rolling score %{y:.3f}"
+                "Hour %{customdata[0]:,.0f}<br>Episode %{customdata[1]}"
+                "<br>Rolling score %{y:.3f}"
                 "<br>%{customdata[2]}<extra></extra>"
             ),
         )
     )
+for mode, color in MODE_COLORS.items():
+    if mode not in set(policy_view["mode"]):
+        continue
+    policy_fig.add_trace(
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            name=mode,
+            marker={"size": 8, "color": color},
+            hoverinfo="skip",
+        )
+    )
 chart_layout(policy_fig, "Adaptive policy score and mode switches", "Rolling score")
+compact_timeline_layout(policy_fig, available_hours)
+policy_fig.add_annotation(
+    x=0,
+    y=1.02,
+    xref="paper",
+    yref="paper",
+    text="Lines connect consecutive episodes within each simulated seasonal week; gaps are unsimulated.",
+    showarrow=False,
+    xanchor="left",
+    font={"size": 11, "color": "#8eaaa0"},
+)
 policy_event = st.plotly_chart(
     policy_fig,
     use_container_width=True,
@@ -672,11 +885,15 @@ if reason_view.empty:
 else:
     for index, item in reason_view.sort_values("simulated_hour", ascending=False).head(40).iterrows():
         entry, jump = st.columns([8, 1])
-        justification = item.get("justification", item.get("diagnosis", "Action recorded."))
+        simulated_day = int(item["simulated_hour"]) // 24 + 1
+        mode = html.escape(str(item["mode"]))
         entry.markdown(
-            f'<div class="reason"><small>{html.escape(str(item.get("simulation_time", "")))}'
-            f'<span class="reason-mode">{html.escape(str(item["mode"]))}</span></small><br>'
-            f'{html.escape(str(justification))}</div>',
+            (
+                '<div class="reason-compact">'
+                f'<span class="reason-day">Day {simulated_day}</span>'
+                f'<span class="reason-mode">{mode}</span>'
+                "</div>"
+            ),
             unsafe_allow_html=True,
         )
         if jump.button("Jump", key=f"reason-{index}", use_container_width=True):

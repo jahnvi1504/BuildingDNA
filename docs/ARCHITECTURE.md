@@ -1,241 +1,339 @@
-# Eco-Loop system architecture
+# BuildingDNA system architecture
 
-## Outcome
+## 1. System outcome
 
-Eco-Loop controls a DOE/PNNL Small Office *during* an EnergyPlus 26.1.0 run.
-The verified Python API callback reads five live zone temperatures and facility
-electric demand, then writes thermostat schedule actuators before HVAC managers
-execute. It is not a run–parse–edit–rerun batch pipeline.
+BuildingDNA controls a DOE/PNNL Small Office during an active EnergyPlus 26.1
+simulation. The Python API callback reads zone temperatures, occupancy, and
+facility demand; applies deterministic control; writes thermostat schedule
+actuators before HVAC managers execute; and verifies the resulting values.
 
-The saved comparison produced:
+It is a live feedback loop, not a run-parse-edit-rerun optimizer.
 
-| Metric | Fixed-schedule baseline | Eco-Loop closed loop | Change |
+The matched representative-period evaluation produced:
+
+| Metric | Fixed schedule | BuildingDNA | Change |
 |---|---:|---:|---:|
-| Facility electricity | 9,156.2 kWh | 8,356.5 kWh | **−8.73%** |
-| Carbon | 6,157.3 kgCO₂e | 5,654.1 kgCO₂e | **−8.17%** |
-| PMV-proxy violations | 7,604 | 2,930 | **−61.47%** |
-| Severe EnergyPlus errors | 0 | 0 | — |
+| Facility electricity | 9,156.2 kWh | 8,356.5 kWh | **-8.73%** |
+| Carbon | 6,157.3 kgCO2e | 5,654.1 kgCO2e | **-8.17%** |
+| Occupied PMV-proxy violations | 7,604 | 2,930 | **-61.47%** |
+| EnergyPlus exit code | 0 | 0 | Successful |
 
-These numbers are reproducible from
-`outputs/matched-12h/baseline/summary.json`,
-`outputs/matched-12h/agent/summary.json`, and the derived
-`outputs/matched-12h/comparison.json`. Both runs use the same model, weather,
-and representative periods. The carbon result uses the documented synthetic
-hourly signal in `src/ecoloop/carbon.py`.
+The numbers are reproducible from:
 
-Tier 2 was enabled at a 12-hour supervisory interval and completed all 56
-scheduled reasoning cycles synchronously. Its logged actions in this long run
-were observational (`get_pmv`) rather than mutating setpoint calls, so the
-quantified savings are attributed to the deterministic Tier 1 controller.
-`outputs/integrated-demo/integrated-proof.json` separately proves a real local
-LLM `set_setpoint` action, Tier 1 validation, and matching live EnergyPlus
-actuator readbacks.
+- `outputs/matched-12h/baseline/summary.json`
+- `outputs/matched-12h/agent/summary.json`
+- `outputs/matched-12h/comparison.json`
+- the corresponding telemetry CSV files.
 
-## Representative-period evaluation
-
-The default evaluation runs four inclusive seasonal weeks: **January 15–21,
-April 15–21, July 15–21, and October 15–21**. Together they cover 28 days, or
-672 simulated hours. EnergyPlus still executes normal physics and live EMS
-callbacks, but only for these four `RunPeriod` objects. The source IDF is never
-edited; Eco-Loop writes a generated `representative_periods.idf` into the run's
-output directory.
-
-The reported comparison values are totals over these same representative
-periods and are not presented as annual totals. They may be annualized only
-with an explicitly reported scaling factor. This methodology samples winter,
-spring, monsoon, and autumn operating conditions while keeping local Tier 2 evaluation practical.
-Self-hosted Llama inference takes tens of wall-clock seconds per cycle, whereas
-an accelerated continuous EnergyPlus year completes in only a few minutes.
-Running all 8,760 accelerated hourly triggers therefore would not meaningfully
-test hourly local inference throughput.
-
-The periods are configurable with `ECOLOOP_REPRESENTATIVE_PERIODS` (a JSON
-list of `MM-DD:MM-DD` values). `ECOLOOP_FULL_YEAR=true` restores a continuous
-full-calendar-year EnergyPlus run.
-
-## Reflex + Reason
+## 2. Closed-loop control
 
 ```text
-EnergyPlus 26.1.0 physics
-    │ live callback every system timestep
-    ▼
-Tier 1 — ReflexController (local, deterministic, zero network latency)
-    │ hard temperature limits, occupied comfort band, deadband enforcement
-    │ schedule actuator writes before HVAC managers
-    ├──────────────────────────────► telemetry.csv / dashboard
-    │ aggregated telemetry window
-    ▼
-Tier 2 — ReasonAgent (local Llama 3.1 8B via Ollama, synchronous)
-    │ local tool calls mirrored by the MCP tool surface
-    │ bounded supervisory setpoint requests + natural-language justification
-    ▼
-Tier 1 validation/clamping ────────► next EnergyPlus timestep
+                        BUILDINGDNA CLOSED LOOP
+
+  EnergyPlus 26.1
+  physics + weather + occupancy
+           |
+           | callback every system timestep
+           v
+  +-----------------------------+
+  | Tier 1: ReflexController    |
+  | - occupied limits           |
+  | - absolute safety limits    |
+  | - heating/cooling deadband  |
+  | - policy drift clamp        |
+  +-----------------------------+
+           |                         telemetry window
+           |                                   |
+           |                                   v
+           |                         +----------------------+
+           |                         | Tier 2: ReasonAgent  |
+           |                         | local Llama via      |
+           |                         | Ollama + typed tools |
+           |                         +----------------------+
+           |                                   |
+           |                           bounded request
+           |                                   |
+           +<----------------------------------+
+           |
+           | validated schedule values
+           v
+  EnergyPlus EMS actuators
+           |
+           | actuator readback
+           +-----------------------> telemetry / evidence / dashboard
 ```
 
-At each configured supervisory interval, the EnergyPlus callback completes one
-Tier 2 cycle synchronously before simulation time advances. An unavailable
-local model server, timeout, malformed tool call, or inference error becomes a
-`reason_failure` log entry and Tier 1 continues on the next timestep.
+### Why two tiers
 
-The matched evaluation sets `ECOLOOP_REASON_INTERVAL_MINUTES=720`, so Tier 2
-runs every 12 simulated hours while Tier 1 continues at every system timestep.
+EnergyPlus can advance far faster than a local 8B model can infer. BuildingDNA
+therefore separates the safety-critical control rate from the reasoning rate:
 
-## Macro-policy wrapper
+- **Tier 1** executes at every system timestep with no model or network
+  dependency.
+- **Tier 2** executes at a configurable supervisory interval and may request a
+  bounded action.
 
-`PolicyReasonWrapper` surrounds the existing reason agent. It observes the same
-cumulative metrics but has no actuator or reflex-controller reference. Every
-48 simulated hours it calculates a fixed weighted score:
+If Tier 2 times out, returns malformed JSON, calls an invalid tool, or is
+unavailable, Tier 1 continues. This preserves simulation stability and mirrors
+how supervisory AI should sit above a real building's safety controls.
 
-- 45% episode electricity saved versus the baseline;
-- 35% reduction in occupied comfort-violation zone-timesteps;
-- 20% episode carbon avoided.
-
-Three consecutive episode scores establish a trend. A declining trend moves
-from `Energy Saver` toward `Balanced` and then `Comfort Priority`; an improving
-trend permits the reverse. The selected profile is added to Tier 2's telemetry
-context as a PMV target and maximum setpoint drift. The same profile's numeric
-drift limit is passed to `ReflexController` on every agent timestep and clamps
-supervisory heating/cooling requests around that occupancy state's base
-setpoint. With the unchanged occupied cooling base of 25.4°C, Comfort Priority
-permits at most 25.9°C (+0.5°C), Balanced 26.4°C (+1.0°C), and Energy Saver
-26.9°C (+1.5°C). The separate occupied ceiling is 27.5°C and the absolute
-ceiling remains 28°C. Tier 1 remains the final safety authority and the policy
-wrapper never writes an actuator.
-
-Every completed episode is appended to `outputs/agent/policy_log.jsonl`.
-`ecoloop policy-evaluate` applies the identical state machine to saved baseline
-and agent telemetry for the completed-run replay.
-
-## Live EnergyPlus integration
+## 3. EnergyPlus integration
 
 `EnergyPlusRunner` registers
 `callback_after_predictor_before_hvac_managers`. During each callback it:
 
-1. reads `Zone Mean Air Temperature` for the five conditioned zones;
+1. reads `Zone Mean Air Temperature` for five conditioned zones;
 2. reads `Facility Total Electricity Demand Rate`;
 3. reads the occupancy schedule;
-4. integrates demand using EnergyPlus's current system-timestep duration;
-5. runs Tier 1;
-6. writes the heating/cooling `Schedule:Compact` actuators; and
-7. records telemetry and aggregates hourly observations for Tier 2.
+4. obtains the current system-timestep duration;
+5. integrates demand into cumulative kWh;
+6. computes the transparent PMV proxy;
+7. applies Tier 1 and any pending supervisory request;
+8. writes heating and cooling `Schedule:Compact` actuators;
+9. records control decisions, telemetry, carbon, and comfort counts; and
+10. aggregates observations for the next Tier 2 checkpoint.
 
-The standalone gate in `scripts/verify_ems_callback.py` proved 12 consecutive
-sensor reads and actuator writes in one simulation. Its machine-readable result
-is `outputs/callback-proof/callback-proof.json`.
+The callback proof records 12 sensor reads and 12 matching actuator writes in
+one EnergyPlus process:
+`outputs/callback-proof/callback-proof.json`.
 
-## MCP tool-calling design
+## 4. Cognitive engine
 
-`src/ecoloop/mcp_server.py` exposes exactly:
-
-- `get_zone_temps()`
-- `get_pmv()`
-- `get_energy_kwh()`
-- `get_grid_carbon_intensity()`
-- `set_setpoint(zone, value, kind)`
-- `adjust_schedule(schedule_name, ops)`
-- `get_error_log()`
-- `patch_idf(diff)`
-
-The in-process local-LLM agent uses the same `ControlTools` implementation as MCP,
-so tool semantics cannot drift between the demo loop and external MCP clients.
-`set_setpoint` only queues a request. Tier 1 applies it after safety checks;
-the model never gives the LLM direct actuator authority.
-
-## Prompt and context management
-
-The system prompt gives one objective hierarchy: safety, occupied comfort,
-then energy/carbon. It restricts each supervisory cycle to at most two actions
-and requires an evidence/action/expected-effect justification.
-
-Raw timestep logs are not sent to the model. `ReasonAgent` keeps a bounded
-12-observation deque of already-aggregated snapshots, serializes it compactly,
-and calls the local Ollama server hourly by default. This caps inference
-frequency and latency independently of simulation length.
-
-The default model is the open-source `llama3.1:8b`, served locally by Ollama's
-OpenAI-compatible endpoint at `http://localhost:11434/v1`. The base URL, client
-placeholder key, and model are configurable through `ECOLOOP_LLM_BASE_URL`,
-`ECOLOOP_LLM_API_KEY`, and `ECOLOOP_LLM_MODEL`. No inference request or API key
-leaves the machine.
-
-## Comfort metric
-
-The current `get_pmv()` value is an explicit operative-temperature proxy:
+The default cognitive engine is the open-source `llama3.1:8b` model served by
+Ollama's local OpenAI-compatible endpoint:
 
 ```text
-PMV = clip((zone_temperature_c - 24.0) × 0.35, -3, 3)
+http://localhost:11434/v1
 ```
 
-This is transparent and deterministic, but it is not a complete ISO 7730
-Fanger calculation because the DOE prototype does not define clothing,
-air-speed, and work-efficiency schedules. The dashboard labels it as an
-estimate. Occupied PMV values outside -0.5 to +0.5 are counted as comfort
-violations. The enforced macro-policy drift clamp bounds every supervisory
-request before the occupied 27.5°C and absolute 28°C safety ceilings are
-applied; widening the occupied ceiling does not bypass the active mode's
-tighter drift limit. Enabling EnergyPlus's native Fanger outputs is a clear
-next calibration step for field-grade claims.
+No hosted inference API is required. The `ollama` API-key value is a
+non-secret client placeholder.
 
-## Self-healing
+`ReasonAgent` sends a compact current-state object rather than raw logs. It
+contains:
 
-`get_error_log` returns recent runtime faults. `patch_idf` accepts a bounded
-JSON diff (maximum 20 operations) containing EnergyPlus object type, object
-name, field, and replacement value. `IDFSelfHealer`:
+- current zone temperatures and PMV estimates;
+- occupancy;
+- cumulative electricity and current carbon intensity;
+- active heating and cooling setpoints;
+- macro-policy mode and drift limit;
+- hard comfort constraints; and
+- the previous action when relevant.
 
-1. validates every object and field against `Energy+.idd` through eppy;
-2. refuses ambiguous or unknown objects;
-3. writes a timestamped backup;
-4. applies the patch; and
-5. logs the diagnosis and exact changes.
+The system prompt demands one typed building-control decision. Generic schema
+explanations and telemetry summaries are rejected. A malformed response gets
+one repair attempt; a second failure becomes a deterministic no-action fallback.
 
-The deterministic proof in `scripts/run_self_healing_demo.py` copies the
-canonical IDF, injects an invalid cooling-schedule reference, and runs
-EnergyPlus to a real fatal termination. The supervisor extracts the actual
-error, asks the local LLM to diagnose it, executes its forced `patch_idf` tool call
-against a separate repair copy, and restarts EnergyPlus. The committed proof
-records failed exit code 1 and zero callbacks before repair, followed by exit
-code 0, 9,512 callbacks, and no severe/fatal errors after repair. EnergyPlus
-cannot resume arbitrary physics state, so "healing" correctly means restoring
-the model and automatically restarting its run.
+Local inference is bounded by `ECOLOOP_LLM_TIMEOUT_SECONDS`, which defaults to
+120 seconds. Timeouts are recorded and contained.
 
-## Integrated LLM-to-actuator evidence
+## 5. Debate and arbitration
 
-`scripts/run_integrated_demo.py` is a disposable two-day proof harness. During
-an occupied timestep it pauses inside the real EnergyPlus callback, supplies
-live zone PMV and energy telemetry to the local LLM, executes the resulting
-`set_setpoint` tool request through the unchanged `ReflexController`, and
-writes the validated schedule value through EMS. The saved proof contains the
-LLM justification and eight matching requested/readback actuator samples from
-that same process. This closes the evidence gap between the independent local
-tool-calling smoke test and callback gate without altering the matched comparison.
+`AI_DEBATE_MODE` supports three modes:
 
-## Model and data provenance
+- `off`: one structured reasoner;
+- `compact`: Energy Saver, Comfort Guardian, and BuildingDNA Arbiter in one
+  strict JSON response;
+- `full`: up to three sequential role calls.
 
-- Engine: EnergyPlus 26.1.0, commit `6f2e40d102`.
-- Building: DOE/PNNL ASHRAE 90.1-2019 Small Office, New Delhi variant,
-  transitioned with every official converter from 22.1 through 26.1.
-- Weather: Bengaluru WMO 432950 TMYx, period 2011–2025.
-- Grid signal: synthetic 24-hour Indian curve, 0.52–0.82 kgCO₂e/kWh.
-- Service water: draw flow set to zero after the legacy prototype/transition
-  combination generated 690,000 irrelevant water-temperature warnings. The
-  same correction is used for both comparison runs; the optimization target is
-  HVAC.
+Energy Saver proposes an efficiency action. Comfort Guardian critiques its
+comfort and safety consequences. BuildingDNA Arbiter returns the only final
+action eligible for execution.
 
-## Latency and failure behavior
+Proposal and critique actions are never sent to control tools. The Arbiter's
+typed request is queued through `ControlTools` and still passes through Tier 1.
+Model-projected percentages are always labeled as estimates.
 
-The production callback performs Tier 2 inference synchronously at each
-configured trigger. This prevents an accelerated EnergyPlus run from racing
-past a slower local model or silently dropping overlapping cycles. Each
-successful cycle records `reason_action`; exceptions record `reason_failure`
-and are contained so Tier 1 continues for the full configured evaluation
-window using its local occupied/unoccupied policy.
+## 6. MCP-compatible tool surface
 
-Measured on the hackathon workstation, the warmed local `llama3.1:8b` smoke
-cycle completed in 36.45 seconds. The integrated two-call action/justification
-proof took 91.90 seconds total, and the self-healing proof took 43.25 seconds
-including two EnergyPlus launches. This is materially slower than the former
-hosted backend. It remains below a real one-hour supervisory interval, but an
-the accelerated simulation now pauses at each Tier 2 trigger. This makes the
-completion rate auditable, but total wall-clock time scales directly with local
-inference latency. The four-week seasonal evaluation limits that cost without
-changing Tier 1 safety behavior.
+`src/ecoloop/mcp_server.py` exposes:
+
+| Tool | Purpose |
+|---|---|
+| `get_zone_temps()` | Current zone temperatures |
+| `get_pmv()` | Current PMV-proxy values |
+| `get_energy_kwh()` | Cumulative facility electricity |
+| `get_grid_carbon_intensity()` | Current synthetic grid signal |
+| `set_setpoint(zone, value, kind)` | Queue a bounded supervisory request |
+| `adjust_schedule(schedule_name, ops)` | Apply bounded schedule operations |
+| `get_error_log()` | Retrieve recent simulation errors |
+| `patch_idf(diff)` | Validate and patch an IDF copy |
+
+The local agent and MCP server use the same `ControlTools` class. Tool behavior
+therefore cannot drift between the in-process proof and an external MCP client.
+
+`set_setpoint` does not write EnergyPlus directly. It creates a
+`SetpointRequest` in `LiveState`; Tier 1 remains the final actuator authority.
+
+## 7. Adaptive macro-policy
+
+`PolicyReasonWrapper` scores each 48-hour episode:
+
+```text
+score =
+    0.45 * electricity_saved_percent
+  + 0.35 * comfort_improvement_percent
+  + 0.20 * carbon_avoided_percent
+```
+
+Three consecutive episode scores establish a trend. The wrapper selects:
+
+| Mode | PMV target | Maximum supervisory drift |
+|---|---:|---:|
+| Energy Saver | -0.5 to +0.5 | 1.5 C |
+| Balanced | -0.4 to +0.4 | 1.0 C |
+| Comfort Priority | -0.3 to +0.3 | 0.5 C |
+
+The wrapper cannot access actuators. It supplies policy context to Tier 2 and a
+numeric drift limit to Tier 1. Hard occupied and absolute safety limits remain
+in force regardless of mode.
+
+## 8. Representative-period methodology
+
+The validated comparison runs four inclusive seasonal weeks:
+
+- January 15-21
+- April 15-21
+- July 15-21
+- October 15-21
+
+Together they cover 28 days or 672 simulated hours. Both baseline and agent use
+the same IDF, weather, and periods. BuildingDNA generates
+`representative_periods.idf` inside each output directory; it does not modify
+the canonical baseline model.
+
+The four-week design samples seasonal operating regimes while keeping
+synchronous local inference practical. It is not an annual total and is never
+presented as one. Set `ECOLOOP_FULL_YEAR=true` for a continuous calendar-year
+Tier 1 run.
+
+The matched configuration used a 720-minute supervisory interval. Tier 2
+completed 56 of 56 scheduled checkpoints. Those long-run events contained no
+valid mutating setpoint call, so the measured 8.73% energy reduction is
+attributed to Tier 1.
+
+## 9. LLM-to-actuator evidence
+
+`scripts/run_integrated_demo.py` supplies live occupied-period telemetry to the
+local model inside a real EnergyPlus callback. The model requests:
+
+```json
+{
+  "tool": "set_setpoint",
+  "arguments": {
+    "zone": "Core_ZN",
+    "value": 25,
+    "kind": "cooling"
+  }
+}
+```
+
+Tier 1 validates the request, EnergyPlus receives the schedule value, and eight
+requested/readback samples match. This proof demonstrates the complete local
+LLM -> tool -> Tier 1 -> EnergyPlus path without misattributing long-run
+savings.
+
+Evidence: `outputs/integrated-demo/integrated-proof.json`.
+
+## 10. Self-healing
+
+`IDFSelfHealer` accepts a bounded JSON diff with at most 20 operations. For each
+operation it:
+
+1. validates object type and field against `Energy+.idd` through eppy;
+2. resolves the exact object by name;
+3. rejects ambiguous or unknown targets;
+4. creates a timestamped backup;
+5. writes the replacement value; and
+6. records the diagnosis and applied changes.
+
+The proof harness injects an invalid cooling schedule reference into a
+disposable IDF. EnergyPlus exits with code 1. The local model extracts the
+runtime error and calls `patch_idf`. The repaired model restarts, exits with
+code 0, produces 9,512 callbacks, and contains no severe or fatal recovery
+errors.
+
+EnergyPlus cannot resume arbitrary internal physics state. "Self-healing"
+therefore means validated repair and automatic restart, not in-memory resume.
+
+Evidence: `outputs/self-healing-demo/self-healing-proof.json`.
+
+## 11. Comfort and carbon metrics
+
+### PMV proxy
+
+```text
+PMV = clip((zone_temperature_c - 24.0) * 0.35, -3, 3)
+```
+
+Occupied values outside -0.5 to +0.5 count as violations. This is an auditable
+operative-temperature proxy, not a complete ISO 7730 Fanger calculation. The
+prototype model lacks the clothing, metabolic-rate, air-speed, and
+work-efficiency schedules required for that claim. The dashboard labels it as
+an estimate.
+
+### Carbon
+
+The carbon signal is a deterministic synthetic hourly Indian grid curve from
+0.52 to 0.82 kgCO2e/kWh. It makes carbon-aware reasoning reproducible offline
+but is not represented as live grid data.
+
+## 12. Dashboard and evidence design
+
+The BuildingDNA Control Room reads committed run artifacts rather than
+inventing live values. It provides:
+
+- verification badges for the matched evaluation, integrated actuator proof,
+  and self-healing proof;
+- measured energy, carbon, comfort, and tariff-based cost KPIs;
+- sampled-period replay that removes unsimulated calendar gaps;
+- zone temperature and PMV charts;
+- optional fixed-schedule overlay;
+- policy episodes connected inside each simulated seasonal block, with mode
+  encoded by marker color;
+- a compact reasoning audit showing only simulated day and active policy; and
+- a provenance panel that states the model, weather, carbon source, PMV method,
+  and exit codes.
+
+JSON loading accepts plain UTF-8 and UTF-8 with BOM so evidence produced by
+Python or PowerShell renders reliably.
+
+## 13. Failure containment
+
+| Failure | Behavior |
+|---|---|
+| Ollama unavailable | Log failure; Tier 1 continues |
+| Local inference timeout | Abort Tier 2 request after configured bound |
+| Malformed model JSON | One repair attempt, then no-action fallback |
+| Invalid tool arguments | Reject request; no actuator write |
+| Unsafe setpoint | Clamp or reject through Tier 1 |
+| IDF runtime error | Diagnose, validate patch, back up, restart |
+| Missing dashboard evidence | Show a clear warning and stop rendering |
+
+This separation ensures that AI improves supervision without becoming a single
+point of failure.
+
+## 14. Provenance
+
+- EnergyPlus: 26.1.0, commit `6f2e40d102`
+- Building: DOE/PNNL ASHRAE 90.1-2019 Small Office, New Delhi variant
+- Model transition: official converters from 22.1 through 26.1
+- Weather: Bengaluru WMO 432950 TMYx, 2011-2025
+- LLM: `llama3.1:8b`, Q4_K_M, served locally through Ollama
+- Grid signal: synthetic hourly Indian curve
+- Application: Python 3.11/3.12, Streamlit, Plotly, MCP, eppy
+
+## 15. Verification commands
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check dashboard.py src tests scripts
+.\.venv\Scripts\python.exe scripts\verify_ems_callback.py
+.\.venv\Scripts\ecoloop.exe reason-smoke
+.\.venv\Scripts\python.exe scripts\run_integrated_demo.py
+.\.venv\Scripts\python.exe scripts\run_self_healing_demo.py
+.\.venv\Scripts\streamlit.exe run dashboard.py
+```
+
+The committed proof artifacts make the core claims inspectable even when local
+model inference is too slow to rerun during a short judging session.
