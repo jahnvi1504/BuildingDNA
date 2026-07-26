@@ -12,6 +12,8 @@ of every decision.
 > **Verified outcome:** 8.73% less electricity and 61.47% fewer estimated
 > comfort violations than the matched fixed-schedule baseline.
 
+##Watch the 3 minute demonstration video here -> https://drive.google.com/file/d/1Q021-7rbMCACwJX__M3UseXZ6l4FL0Gw/view?usp=sharing
+
 ## Results that can be audited
 
 | Matched metric | Fixed schedule | BuildingDNA | Improvement |
