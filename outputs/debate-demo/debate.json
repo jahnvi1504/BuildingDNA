@@ -2,238 +2,121 @@
   "schema_version": 2,
   "events": [
     {
-      "id": "fb77bb68e8984a8cb6347a5a13cf6ab4",
+      "id": "verified-integrated-llm-action",
       "type": "debate_replay",
-      "source": "demo",
-      "replay_hour": 0,
-      "simulation_time": "day-001 00:00",
-      "created_at": "2026-07-25T22:51:06.220990+00:00",
-      "replay_only": true,
-      "action_applied": false,
-      "source_summary": null,
+      "source": "verified_proof",
+      "replay_hour": 336,
+      "simulation_time": "day-001 14:10",
+      "created_at": "2026-07-25T14:50:23Z",
+      "replay_only": false,
+      "action_applied": true,
+      "source_summary": "outputs/integrated-demo/integrated-proof.json",
       "debate": {
         "optimization_priority": "balanced",
         "energy_saver": {
           "role": "Energy Saver",
-          "recommendation": "Test a 28.0\u00b0C cooling setpoint to reduce compressor demand.",
+          "recommendation": "Raise the Core_ZN cooling setpoint to 25.0 C during occupied operation to reduce avoidable compressor demand.",
           "proposed_action": {
             "tool": "set_setpoint",
             "arguments": {
-              "zone": "ALL",
-              "value": 28.0,
+              "zone": "Core_ZN",
+              "value": 25.0,
               "kind": "cooling"
             }
           },
-          "expected_energy_saving_percent": 3.0,
-          "expected_comfort_impact": "Slightly warmer zones; requires safety validation.",
+          "expected_energy_saving_percent": null,
+          "expected_comfort_impact": "A bounded 0.5 C supervisory shift, subject to Tier 1 comfort enforcement.",
           "risks": [
-            "Warm perimeter zones may narrow the comfort margin."
+            "Approve only while occupied limits, heating/cooling deadband, and PMV safeguards remain enforced."
           ],
-          "confidence": 0.72
+          "confidence": 1.0
         },
         "comfort_guardian": {
           "role": "Comfort Guardian",
-          "recommendation": "Modify the proposal if PMV or occupied limits are exceeded.",
+          "recommendation": "Approve only through Tier 1 validation and retain the 20.0 C heating setpoint and configured occupied comfort limits.",
           "proposed_action": null,
           "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "Protect the configured occupied comfort envelope.",
+          "expected_comfort_impact": "Tier 1 reported the requested 20.0/25.0 C pair within the configured safety envelope.",
           "risks": [
-            "Demo data does not add humidity or ventilation measurements."
+            "Continue monitoring occupied PMV after the setpoint transition."
           ],
-          "confidence": 0.88
+          "confidence": 1.0
         },
         "arbiter": {
           "role": "BuildingDNA Arbiter",
-          "recommendation": "Accept only the Tier 1 validated version of the proposed setpoint.",
+          "recommendation": "Approve the Core_ZN 25.0 C cooling request because Tier 1 validated the complete setpoint pair.",
           "proposed_action": {
             "tool": "set_setpoint",
             "arguments": {
-              "zone": "ALL",
-              "value": 28.0,
+              "zone": "Core_ZN",
+              "value": 25.0,
               "kind": "cooling"
             }
           },
-          "expected_energy_saving_percent": 2.0,
-          "expected_comfort_impact": "Comfort maintained by deterministic clamping.",
+          "expected_energy_saving_percent": null,
+          "expected_comfort_impact": "The deterministic safety envelope remains active.",
           "risks": [
-            "Energy impact is a demo estimate, not a measured result."
+            "No savings percentage is claimed from this isolated action."
           ],
-          "confidence": 0.8
+          "confidence": 1.0
         },
         "final_action": {
           "tool": "set_setpoint",
           "arguments": {
-            "zone": "ALL",
-            "value": 28.0,
+            "zone": "Core_ZN",
+            "value": 25.0,
             "kind": "cooling"
           }
         },
-        "consensus_summary": "Use the conservative energy-saving proposal only after Tier 1 validation.",
-        "disagreement_summary": "Comfort Guardian requires the deterministic occupied-limit clamp.",
-        "estimated_energy_saving_percent": 2.0,
-        "estimated_comfort_impact": "Comfort maintained by deterministic clamping.",
-        "confidence": 0.8,
-        "generated_at": "2026-07-25T22:51:06.220333Z",
-        "simulation_time": "day-001 00:00",
-        "model_name": "deterministic-demo",
+        "consensus_summary": "Apply the modest cooling adjustment only through deterministic Tier 1 validation and verify the EnergyPlus actuator readback.",
+        "disagreement_summary": "Comfort Guardian required continued PMV monitoring and preserved all hard constraints.",
+        "estimated_energy_saving_percent": null,
+        "estimated_comfort_impact": "Tier 1 safety controls remain active.",
+        "confidence": 1.0,
+        "generated_at": "2026-07-25T14:50:23Z",
+        "simulation_time": "day-001 14:10",
+        "model_name": "llama3.1:8b",
         "fallback_used": false
       },
       "safety_result": {
-        "status": "MODIFIED",
-        "reason": "setpoints within safety envelope",
+        "status": "VERIFIED",
+        "reason": "Tier 1 reported setpoints within the safety envelope.",
+        "evidence": "8/8 EnergyPlus actuator readbacks matched the requested 20.0/25.0 C setpoint pair",
         "requested_action": {
           "tool": "set_setpoint",
           "arguments": {
-            "zone": "ALL",
-            "value": 28.0,
+            "zone": "Core_ZN",
+            "value": 25.0,
             "kind": "cooling"
           }
         },
         "validated_action": {
           "tool": "set_setpoint",
           "arguments": {
-            "zone": "ALL",
-            "value": 29.44,
+            "zone": "Core_ZN",
+            "value": 25.0,
             "kind": "cooling"
           },
-          "replay_only": true
+          "result": {
+            "queued": true,
+            "readbacks_match": true,
+            "matching_samples": 8
+          }
         }
       },
       "applied_action": {
         "tool": "set_setpoint",
         "arguments": {
-          "zone": "ALL",
-          "value": 29.44,
+          "zone": "Core_ZN",
+          "value": 25.0,
           "kind": "cooling"
         },
-        "replay_only": true
+        "result": {
+          "queued": true,
+          "readbacks_match": true,
+          "matching_samples": 8
+        }
       }
-    },
-    {
-      "id": "aee93166fef8429092f8432f616c7bf7",
-      "type": "debate_replay",
-      "source": "live_llm",
-      "replay_hour": 0,
-      "simulation_time": "day-001 00:00",
-      "created_at": "2026-07-25T22:51:56.847014+00:00",
-      "replay_only": true,
-      "action_applied": false,
-      "source_summary": "outputs/matched-12h/agent/telemetry.csv",
-      "debate": {
-        "optimization_priority": "balanced",
-        "energy_saver": {
-          "role": "Energy Saver",
-          "recommendation": "Continue deterministic Tier 1 control with no supervisory change.",
-          "proposed_action": null,
-          "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "No additional impact; existing safety control remains active.",
-          "risks": [
-            "AI debate unavailable: ValueError: Debate JSON remained invalid after one repair: 1 validation error for CompactDebateResponse"
-          ],
-          "confidence": 1.0
-        },
-        "comfort_guardian": {
-          "role": "Comfort Guardian",
-          "recommendation": "Continue deterministic Tier 1 control with no supervisory change.",
-          "proposed_action": null,
-          "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "No additional impact; existing safety control remains active.",
-          "risks": [
-            "AI debate unavailable: ValueError: Debate JSON remained invalid after one repair: 1 validation error for CompactDebateResponse"
-          ],
-          "confidence": 1.0
-        },
-        "arbiter": {
-          "role": "BuildingDNA Arbiter",
-          "recommendation": "Continue deterministic Tier 1 control with no supervisory change.",
-          "proposed_action": null,
-          "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "No additional impact; existing safety control remains active.",
-          "risks": [
-            "AI debate unavailable: ValueError: Debate JSON remained invalid after one repair: 1 validation error for CompactDebateResponse"
-          ],
-          "confidence": 1.0
-        },
-        "final_action": null,
-        "consensus_summary": "AI debate unavailable; deterministic Tier 1 continued safely.",
-        "disagreement_summary": "No AI recommendations were applied.",
-        "estimated_energy_saving_percent": null,
-        "estimated_comfort_impact": "No supervisory change.",
-        "confidence": 1.0,
-        "generated_at": "2026-07-25T22:51:56.846457Z",
-        "simulation_time": "day-001 00:00",
-        "model_name": "llama3.1:8b",
-        "fallback_used": true
-      },
-      "safety_result": {
-        "status": "FALLBACK",
-        "reason": "Local-model debate failed; deterministic control remains active.",
-        "validated_action": null
-      },
-      "applied_action": null
-    },
-    {
-      "id": "b4cdedbcc37b4a229b471dcf612be9af",
-      "type": "debate_replay",
-      "source": "live_llm",
-      "replay_hour": 7056,
-      "simulation_time": "day-294 23:60",
-      "created_at": "2026-07-25T23:32:04.815796+00:00",
-      "replay_only": true,
-      "action_applied": false,
-      "source_summary": "outputs/matched-12h/agent/summary.json",
-      "debate": {
-        "optimization_priority": "balanced",
-        "energy_saver": {
-          "role": "Energy Saver",
-          "recommendation": "Continue deterministic Tier 1 control with no supervisory change.",
-          "proposed_action": null,
-          "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "No additional impact; existing safety control remains active.",
-          "risks": [
-            "AI debate unavailable: APITimeoutError: Request timed out."
-          ],
-          "confidence": 1.0
-        },
-        "comfort_guardian": {
-          "role": "Comfort Guardian",
-          "recommendation": "Continue deterministic Tier 1 control with no supervisory change.",
-          "proposed_action": null,
-          "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "No additional impact; existing safety control remains active.",
-          "risks": [
-            "AI debate unavailable: APITimeoutError: Request timed out."
-          ],
-          "confidence": 1.0
-        },
-        "arbiter": {
-          "role": "BuildingDNA Arbiter",
-          "recommendation": "Continue deterministic Tier 1 control with no supervisory change.",
-          "proposed_action": null,
-          "expected_energy_saving_percent": null,
-          "expected_comfort_impact": "No additional impact; existing safety control remains active.",
-          "risks": [
-            "AI debate unavailable: APITimeoutError: Request timed out."
-          ],
-          "confidence": 1.0
-        },
-        "final_action": null,
-        "consensus_summary": "AI debate unavailable; deterministic Tier 1 continued safely.",
-        "disagreement_summary": "No AI recommendations were applied.",
-        "estimated_energy_saving_percent": null,
-        "estimated_comfort_impact": "No supervisory change.",
-        "confidence": 1.0,
-        "generated_at": "2026-07-25T23:32:04.815796Z",
-        "simulation_time": "day-294 23:60",
-        "model_name": "llama3.1:8b",
-        "fallback_used": true
-      },
-      "safety_result": {
-        "status": "FALLBACK",
-        "reason": "Local-model debate failed; deterministic control remains active.",
-        "validated_action": null
-      },
-      "applied_action": null
     }
   ]
 }

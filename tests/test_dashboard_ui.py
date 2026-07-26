@@ -27,7 +27,7 @@ def test_dashboard_uses_buildingdna_title_and_not_legacy_title() -> None:
     assert DASHBOARD_TITLE == "BuildingDNA Control Room"
     assert PRODUCT_NAME == "BuildingDNA"
     assert "Eco-Loop control room" not in source
-    assert 'st.title(DASHBOARD_TITLE)' in source
+    assert '<div class="hero-title">BuildingDNA</div>' in source
     assert "page_title=DASHBOARD_TITLE" in source
 
 
@@ -103,10 +103,19 @@ def test_dashboard_replay_skips_unsimulated_hours() -> None:
     assert "Representative-period performance" in source
     assert "Annual performance" not in source
     assert 'load_proof("matched-12h/comparison.json")' in source
-    assert "MATCHED EVALUATION" in source
+    assert "Matched evaluation" in source
+    assert "Autonomous Building Intelligence Platform" in source
+    assert "Honeywell Hackathon" not in source
+    assert source.count('class="metric-card"') == 5
+    assert "One system. Five signals." in source
+    assert '<div class="metric-label">Occupancy</div>' not in source
+    assert 'active_reason["simulation_time"]' in source
+    assert "Three perspectives. One safe action." in source
+    assert "Simulation timeline" in source
     assert "Lines connect consecutive episodes within each simulated seasonal week" in source
     assert '"color": block_rows["mode"].map(MODE_COLORS)' in source
     assert '<span class="reason-day">Day {simulated_day}</span>' in source
+    assert 'class="reason-conversation"' in source
     assert "with entry.expander" not in source
     assert "full-year-tier1" not in source
 

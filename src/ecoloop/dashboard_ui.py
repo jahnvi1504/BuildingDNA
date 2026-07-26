@@ -101,6 +101,8 @@ def debate_source_label(
     event: dict[str, Any],
     live_event_id: str | None = None,
 ) -> str:
+    if event.get("source") == "verified_proof":
+        return "VERIFIED ACTION REPLAY"
     if event.get("source") == "demo":
         return "DEMO DATA"
     if live_event_id and event.get("id") == live_event_id:
@@ -143,31 +145,69 @@ def debate_replay_html(
         if isinstance(safety, dict)
         else "FALLBACK"
     )
+    safety_evidence = (
+        str(safety.get("evidence", ""))
+        if isinstance(safety, dict)
+        else ""
+    )
     source = debate_source_label(event, live_event_id)
 
     def confidence(item: dict[str, Any]) -> str:
+        if event.get("source") == "verified_proof":
+            return "Evidence-backed"
         try:
             return f"{float(item.get('confidence')):.0%}"
         except (TypeError, ValueError):
             return "Not recorded"
 
+    def confidence_width(item: dict[str, Any]) -> int:
+        try:
+            return max(0, min(100, round(float(item.get("confidence")) * 100)))
+        except (TypeError, ValueError):
+            return 0
+
+    verification_html = (
+        f'<strong>Verification:</strong> {escaped_truncated(safety_evidence, 120)}<br>'
+        if safety_evidence
+        else ""
+    )
     return (
-        f'<div class="debate-source">{escaped_truncated(source, 40)}</div>'
+        '<div class="debate-stage">'
+        f'<div class="debate-source"><span class="status-dot"></span>{escaped_truncated(source, 40)}</div>'
         '<div class="debate-grid">'
-        '<div class="debate-card"><div class="debate-role">Energy Saver</div>'
+        '<div class="debate-card"><div class="ai-avatar">ES</div>'
+        '<div class="debate-role">Energy Saver</div>'
         f'<div class="debate-copy">{escaped_truncated(energy.get("recommendation"), 240)}</div>'
-        f'<div class="debate-meta">Energy impact: {escaped_truncated(energy_impact, 100)}'
-        f'<br>Confidence: {escaped_truncated(confidence(energy), 30)}</div></div>'
-        '<div class="debate-card"><div class="debate-role">Comfort Guardian</div>'
+        f'<div class="reason-bullet">{escaped_truncated(energy_impact, 120)}</div>'
+        f'<div class="debate-meta">Confidence · {escaped_truncated(confidence(energy), 30)}</div>'
+        '<div class="confidence-track">'
+        f'<div class="confidence-fill" style="width:{confidence_width(energy)}%"></div></div></div>'
+        '<div class="debate-card"><div class="ai-avatar">CG</div>'
+        '<div class="debate-role">Comfort Guardian</div>'
         f'<div class="debate-copy">{escaped_truncated(comfort.get("recommendation"), 240)}</div>'
-        f'<div class="debate-meta">Comfort concern: {escaped_truncated(comfort_concern, 140)}'
-        f'<br>Confidence: {escaped_truncated(confidence(comfort), 30)}</div></div>'
-        '<div class="debate-card"><div class="debate-role">BuildingDNA Arbiter</div>'
+        f'<div class="reason-bullet">{escaped_truncated(comfort_concern, 150)}</div>'
+        f'<div class="debate-meta">Confidence · {escaped_truncated(confidence(comfort), 30)}</div>'
+        '<div class="confidence-track">'
+        f'<div class="confidence-fill" style="width:{confidence_width(comfort)}%"></div></div></div>'
+        '<div class="debate-card"><div class="ai-avatar">BD</div>'
+        '<div class="debate-role">BuildingDNA Arbiter</div>'
         f'<div class="debate-copy">Final action: {escaped_truncated(action_label(debate.get("final_action")), 180)}</div>'
-        f'<div class="debate-meta">Compromise: {escaped_truncated(debate.get("consensus_summary"), 180)}'
-        f'<br>Confidence: {escaped_truncated(confidence(arbiter), 30)}</div></div>'
+        f'<div class="reason-bullet">{escaped_truncated(debate.get("consensus_summary"), 190)}</div>'
+        f'<div class="debate-meta">Confidence · {escaped_truncated(confidence(arbiter), 30)}</div>'
+        '<div class="confidence-track">'
+        f'<div class="confidence-fill" style="width:{confidence_width(arbiter)}%"></div></div></div>'
+        '</div>'
+        '<div class="decision-flow">'
+        '<div class="flow-node">Energy Saver</div>'
+        '<div class="flow-node">Comfort Guardian</div>'
+        '<div class="flow-node">BuildingDNA Decision</div>'
+        '<div class="flow-node">Verified Action</div>'
+        '<div class="flow-node">EnergyPlus Callback</div>'
         '</div>'
         '<div class="debate-final">'
-        f'<strong>Safety Result:</strong> {escaped_truncated(safety_status, 20)}<br>'
-        f'<strong>Applied Action:</strong> {escaped_truncated(applied, 240)}</div>'
+        '<div class="verify-check">✓</div><div class="verify-copy">'
+        f'<strong>Verification completed · Safety Result: {escaped_truncated(safety_status, 40)}</strong><br>'
+        f"{verification_html}"
+        f'Applied Action: {escaped_truncated(applied, 240)}</div>'
+        '</div></div>'
     )

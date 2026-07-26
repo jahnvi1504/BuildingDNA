@@ -135,6 +135,22 @@ def test_generated_source_labels_live_then_saved(tmp_path: Path) -> None:
     assert "SAVED REPLAY" in (debate_replay_html(event) or "")
 
 
+def test_verified_proof_replay_has_evidence_label_and_readback() -> None:
+    event = build_demo_debate(snapshot(), 145, Settings(_env_file=None))
+    event["source"] = "verified_proof"
+    event["replay_only"] = False
+    event["safety_result"] = {
+        "status": "VERIFIED",
+        "evidence": "8/8 EnergyPlus actuator readbacks matched",
+    }
+
+    rendered = debate_replay_html(event) or ""
+
+    assert "VERIFIED ACTION REPLAY" in rendered
+    assert "Evidence-backed" in rendered
+    assert "8/8 EnergyPlus actuator readbacks matched" in rendered
+
+
 def test_rendered_llm_text_is_escaped(tmp_path: Path) -> None:
     event = load_demo_debate(
         snapshot(),
