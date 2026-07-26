@@ -228,7 +228,7 @@ claim maps to committed telemetry or a reproducible proof.
 
 - [Setup guide](docs/SETUP.md)
 - [System architecture](docs/ARCHITECTURE.md)
-- [Three-minute demo](docs/DEMO.md)
+
 
 ---
 
